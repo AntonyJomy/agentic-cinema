@@ -1,1 +1,2 @@
 pydantic>=2.5
+google-cloud-firestore>=2.28
