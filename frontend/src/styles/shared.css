@@ -1,0 +1,157 @@
+/* Shared primitives for the app screens (Upload/Processing/Findings/Review/Reports).
+   Reuses the color/font language established in ScrollStory.css / Features.css
+   without touching those files. */
+
+.app-shell {
+  min-height: 100vh;
+  background: #0B0B0C;
+  color: #F2F0EA;
+  padding-bottom: 80px;
+}
+
+.app-page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 48px 24px 0;
+}
+
+.page-eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #6B6963;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.page-title {
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 700;
+  font-size: 30px;
+  letter-spacing: -0.01em;
+  color: #F2F0EA;
+  margin: 0 0 8px;
+}
+
+.page-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  color: #A6A49C;
+  line-height: 1.6;
+  margin: 0 0 36px;
+  max-width: 560px;
+}
+
+.panel {
+  background: #131315;
+  border: 1px solid #1E1F22;
+  border-radius: 14px;
+  padding: 28px 26px;
+}
+
+.btn-primary {
+  background: #F2F0EA;
+  color: #000;
+  border: none;
+  padding: 13px 24px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: #F2F0EA;
+  border: 1px solid #2A2B2E;
+  padding: 13px 24px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+}
+
+.btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-small {
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 7px;
+}
+
+.btn-danger {
+  background: rgba(226, 114, 91, 0.12);
+  color: #E2725B;
+  border: 1px solid rgba(226, 114, 91, 0.4);
+}
+
+.btn-success {
+  background: rgba(111, 207, 151, 0.12);
+  color: #6FCF97;
+  border: 1px solid rgba(111, 207, 151, 0.4);
+}
+
+/* overall_status pill — distinct from entity-level RiskBadge status values */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: capitalize;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+}
+
+.status-pill--pending {
+  color: #D4A24C;
+  background: rgba(212, 162, 76, 0.12);
+  border-color: rgba(212, 162, 76, 0.35);
+}
+
+.status-pill--flagged,
+.status-pill--rejected {
+  color: #E2725B;
+  background: rgba(226, 114, 91, 0.12);
+  border-color: rgba(226, 114, 91, 0.35);
+}
+
+.status-pill--approved {
+  color: #6FCF97;
+  background: rgba(111, 207, 151, 0.12);
+  border-color: rgba(111, 207, 151, 0.35);
+}
+
+.run-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+
+.run-header-title {
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  color: #F2F0EA;
+  margin: 0 0 4px;
+}
+
+.run-header-sub {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  color: #6B6963;
+}
