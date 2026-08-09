@@ -1,0 +1,29 @@
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.risk-badge--flagged {
+  color: #E2725B;
+  background: rgba(226, 114, 91, 0.12);
+  border-color: rgba(226, 114, 91, 0.35);
+}
+
+.risk-badge--cleared {
+  color: #6FCF97;
+  background: rgba(111, 207, 151, 0.12);
+  border-color: rgba(111, 207, 151, 0.35);
+}
+
+.risk-badge--overridden {
+  color: #8AA9C9;
+  background: rgba(138, 169, 201, 0.12);
+  border-color: rgba(138, 169, 201, 0.35);
+}
