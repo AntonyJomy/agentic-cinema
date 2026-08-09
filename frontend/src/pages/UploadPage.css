@@ -1,0 +1,71 @@
+.upload-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.upload-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.upload-field span {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #8B8A85;
+}
+
+.upload-field input {
+  background: #0B0B0C;
+  border: 1px solid #1E1F22;
+  border-radius: 8px;
+  padding: 11px 14px;
+  color: #F2F0EA;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+}
+
+.upload-field input:focus {
+  outline: none;
+  border-color: rgba(212, 162, 76, 0.5);
+}
+
+.dropzone {
+  border: 1.5px dashed #2A2B2E;
+  border-radius: 12px;
+  padding: 44px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dropzone:hover,
+.dropzone.is-dragging {
+  border-color: rgba(212, 162, 76, 0.5);
+  background: rgba(212, 162, 76, 0.04);
+}
+
+.dropzone-title,
+.dropzone-file {
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #F2F0EA;
+}
+
+.dropzone-hint {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  color: #6B6963;
+}
+
+.upload-cta {
+  align-self: flex-start;
+}
