@@ -1,0 +1,58 @@
+.gatekeeper-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  border: 1px solid transparent;
+}
+
+.gatekeeper-banner.is-blocked {
+  background: rgba(226, 114, 91, 0.08);
+  border-color: rgba(226, 114, 91, 0.3);
+}
+
+.gatekeeper-banner.is-clear {
+  background: rgba(111, 207, 151, 0.08);
+  border-color: rgba(111, 207, 151, 0.3);
+}
+
+.gatekeeper-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: #F2F0EA;
+}
+
+.gatekeeper-detail {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  color: #8B8A85;
+}
+
+.review-final {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.review-final .run-header-title {
+  display: block;
+}
+
+.review-final .run-header-sub {
+  display: block;
+  margin-top: 4px;
+  max-width: 420px;
+}
+
+.review-final-actions {
+  display: flex;
+  gap: 10px;
+}
