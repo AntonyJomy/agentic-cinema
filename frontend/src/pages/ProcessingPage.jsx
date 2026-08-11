@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useRun } from '../context/useRun';
 import '../styles/shared.css';
 import './ProcessingPage.css';
 
@@ -14,6 +15,7 @@ const STEP_MS = 1100;
 
 export default function ProcessingPage() {
   const navigate = useNavigate();
+  const { markProcessingDone } = useRun();
   const [activeStep, setActiveStep] = useState(0);
   const done = activeStep >= STEPS.length;
 
@@ -22,6 +24,10 @@ export default function ProcessingPage() {
     const timer = setTimeout(() => setActiveStep((s) => s + 1), STEP_MS);
     return () => clearTimeout(timer);
   }, [activeStep, done]);
+
+  useEffect(() => {
+    if (done) markProcessingDone();
+  }, [done, markProcessingDone]);
 
   return (
     <div className="app-page">
