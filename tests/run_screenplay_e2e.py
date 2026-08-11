@@ -47,6 +47,10 @@ from agents.address_specialist import (  # noqa: E402
     STATE_RESEARCH_RESULT as ADDRESS_STATE_RESULT,
     address_specialist,
 )
+from agents.literary_reference_specialist import (  # noqa: E402
+    STATE_RESEARCH_RESULT as LITERARY_STATE_RESULT,
+    literary_reference_specialist,
+)
 from schemas.entities import Entities, Entity, EntityType  # noqa: E402
 from schemas.research_result import ResearchResult  # noqa: E402
 
@@ -213,6 +217,11 @@ async def main() -> int:
     songs = [e for e in entities.entities if e.entity_type == EntityType.SONG]
     brands = [e for e in entities.entities if e.entity_type == EntityType.LOGO_BRAND]
     addresses = [e for e in entities.entities if e.entity_type == EntityType.ADDRESS]
+    literary = [
+        e
+        for e in entities.entities
+        if e.entity_type == EntityType.QUOTE_OR_LITERARY_REFERENCE
+    ]
 
     banner("ROUTING")
     print(f"Business entities → Business Specialist: {len(businesses)}")
@@ -230,6 +239,9 @@ async def main() -> int:
     print(f"Address entities → Address Specialist: {len(addresses)}")
     for e in addresses:
         print(f"  - {e.name}")
+    print(f"Literary/quote entities → Literary Reference Specialist: {len(literary)}")
+    for e in literary:
+        print(f"  - {e.name}")
 
     handled_types = {
         EntityType.BUSINESS,
@@ -237,6 +249,7 @@ async def main() -> int:
         EntityType.SONG,
         EntityType.LOGO_BRAND,
         EntityType.ADDRESS,
+        EntityType.QUOTE_OR_LITERARY_REFERENCE,
     }
     other = [e for e in entities.entities if e.entity_type not in handled_types]
     if other:
@@ -347,6 +360,29 @@ async def main() -> int:
             "Nothing to research with the Address Specialist."
         )
 
+    literary_results: list[ResearchResult] = []
+    for i, entity in enumerate(literary, start=1):
+        result = await run_specialist(
+            agent=literary_reference_specialist,
+            state_key=LITERARY_STATE_RESULT,
+            research_agent_name="literary_reference_research_agent",
+            entity_type_label="quote_or_literary_reference",
+            title="AGENT 7 — LITERARY REFERENCE SPECIALIST",
+            entity=entity,
+            index=i,
+            total=len(literary),
+        )
+        if result:
+            literary_results.append(result)
+
+    if not literary:
+        banner("AGENT 7 — LITERARY REFERENCE SPECIALIST")
+        print(
+            "No entity_type=quote_or_literary_reference found in this "
+            "screenplay extraction.\n"
+            "Nothing to research with the Literary Reference Specialist."
+        )
+
     banner("END-TO-END SUMMARY")
     print(f"Extraction entities:              {entities.entity_count}")
     print(f"Business researched:              {len(business_results)}/{len(businesses)}")
@@ -386,6 +422,14 @@ async def main() -> int:
 
     print(f"Addresses researched:             {len(address_results)}/{len(addresses)}")
     for r in address_results:
+        print(
+            f"  • {r.entity_name}: status={r.status.value} "
+            f"confidence={r.confidence:.2f} citations={len(r.citations)}"
+        )
+        print(f"    finding: {r.finding[:160]}{'...' if len(r.finding) > 160 else ''}")
+
+    print(f"Literary refs researched:         {len(literary_results)}/{len(literary)}")
+    for r in literary_results:
         print(
             f"  • {r.entity_name}: status={r.status.value} "
             f"confidence={r.confidence:.2f} citations={len(r.citations)}"
