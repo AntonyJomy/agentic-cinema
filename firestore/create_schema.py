@@ -66,9 +66,9 @@ doc_ref.set({
     "metadata": metadata
 })
 
-print(f"✅ Schema document created with run_id: {run_id}")
+print(f"Schema document created with run_id: {run_id}")
 
 # Read it back to confirm
 doc = doc_ref.get()
-print("✅ Confirmed contents:")
+print("Confirmed contents:")
 print(doc.to_dict())
