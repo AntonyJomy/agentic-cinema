@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-End-to-end demo: test_screenplay.txt → Extraction → Business Specialist(s).
+End-to-end demo: test_screenplay.txt → Extraction → available specialists.
 
 Shows each available agent's reply. Specialists not yet implemented
-(character / music / scoring / legal / gatekeeper) are listed as skipped.
+(music / scoring / legal / gatekeeper) are listed as skipped.
 """
 from __future__ import annotations
 
@@ -27,8 +27,12 @@ if os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
 from agents.business_specialist import (  # noqa: E402
-    STATE_RESEARCH_RESULT,
+    STATE_RESEARCH_RESULT as BUSINESS_STATE_RESULT,
     business_specialist,
+)
+from agents.character_name_specialist import (  # noqa: E402
+    STATE_RESEARCH_RESULT as CHARACTER_STATE_RESULT,
+    character_name_specialist,
 )
 from agents.extraction_agent import extractor  # noqa: E402
 from schemas.entities import Entities, Entity, EntityType  # noqa: E402
@@ -95,22 +99,31 @@ async def run_extraction(screenplay_text: str) -> Entities:
     return entities
 
 
-async def run_business_specialist(entity: Entity, index: int, total: int) -> ResearchResult | None:
-    banner(
-        f"AGENT 2 — BUSINESS SPECIALIST ({index}/{total}): {entity.name}"
-    )
+async def run_specialist(
+    *,
+    agent,
+    state_key: str,
+    research_agent_name: str,
+    entity_type_label: str,
+    title: str,
+    entity: Entity,
+    index: int,
+    total: int,
+) -> ResearchResult | None:
+    banner(f"{title} ({index}/{total}): {entity.name}")
     print("Input Entity:")
     print(entity.model_dump_json(indent=2))
 
-    runner = InMemoryRunner(app_name="e2e_business", agent=business_specialist)
+    app_name = f"e2e_{entity_type_label}_{index}"
+    runner = InMemoryRunner(app_name=app_name, agent=agent)
     session = await runner.session_service.create_session(
-        app_name="e2e_business",
+        app_name=app_name,
         user_id=USER_ID,
     )
 
     prompt = (
-        "Research the following screenplay Entity. "
-        "entity_type must be treated as business.\n\n"
+        f"Research the following screenplay Entity. "
+        f"entity_type must be treated as {entity_type_label}.\n\n"
         f"{entity.model_dump_json(indent=2)}"
     )
 
@@ -140,15 +153,15 @@ async def run_business_specialist(entity: Entity, index: int, total: int) -> Res
                     print("\n  [Confidence re-check] exit_loop → evidence accepted")
 
             text = getattr(part, "text", None)
-            if text and getattr(event, "author", None) == "business_research_agent":
+            if text and getattr(event, "author", None) == research_agent_name:
                 research_texts.append(text)
 
     refreshed = await runner.session_service.get_session(
-        app_name="e2e_business",
+        app_name=app_name,
         user_id=USER_ID,
         session_id=session.id,
     )
-    raw = (refreshed.state or {}).get(STATE_RESEARCH_RESULT) if refreshed else None
+    raw = (refreshed.state or {}).get(state_key) if refreshed else None
     if raw is None and research_texts:
         raw = research_texts[-1]
     if isinstance(raw, str):
@@ -158,11 +171,11 @@ async def run_business_specialist(entity: Entity, index: int, total: int) -> Res
             pass
 
     if raw is None:
-        print("\n--- Business specialist reply: NONE ---")
+        print(f"\n--- {title} reply: NONE ---")
         return None
 
     result = ResearchResult.model_validate(raw)
-    print("\n--- Business specialist reply ---")
+    print(f"\n--- {title} reply ---")
     print(result.model_dump_json(indent=2))
     print(f"\nParallel MCP used: {saw_parallel} | Re-check exit_loop: {saw_exit_loop}")
     return result
@@ -182,36 +195,84 @@ async def main() -> int:
     entities = await run_extraction(screenplay_text)
 
     businesses = [e for e in entities.entities if e.entity_type == EntityType.BUSINESS]
+    characters = [
+        e for e in entities.entities if e.entity_type == EntityType.CHARACTER_NAME
+    ]
+
     banner("ROUTING")
     print(f"Business entities → Business Specialist: {len(businesses)}")
     for e in businesses:
         print(f"  - {e.name}")
+    print(f"Character name entities → Character Name Specialist: {len(characters)}")
+    for e in characters:
+        print(f"  - {e.name}")
 
-    other = [e for e in entities.entities if e.entity_type != EntityType.BUSINESS]
+    handled_types = {EntityType.BUSINESS, EntityType.CHARACTER_NAME}
+    other = [e for e in entities.entities if e.entity_type not in handled_types]
     if other:
         print("\nNot yet implemented (skipped):")
         for e in other:
             print(f"  - {e.name!r} ({e.entity_type.value}) → specialist TBD")
 
-    results: list[ResearchResult] = []
+    business_results: list[ResearchResult] = []
     for i, entity in enumerate(businesses, start=1):
-        result = await run_business_specialist(entity, i, len(businesses))
+        result = await run_specialist(
+            agent=business_specialist,
+            state_key=BUSINESS_STATE_RESULT,
+            research_agent_name="business_research_agent",
+            entity_type_label="business",
+            title="AGENT 2 — BUSINESS SPECIALIST",
+            entity=entity,
+            index=i,
+            total=len(businesses),
+        )
         if result:
-            results.append(result)
+            business_results.append(result)
+
+    character_results: list[ResearchResult] = []
+    for i, entity in enumerate(characters, start=1):
+        result = await run_specialist(
+            agent=character_name_specialist,
+            state_key=CHARACTER_STATE_RESULT,
+            research_agent_name="character_research_agent",
+            entity_type_label="character_name",
+            title="AGENT 3 — CHARACTER NAME SPECIALIST",
+            entity=entity,
+            index=i,
+            total=len(characters),
+        )
+        if result:
+            character_results.append(result)
+
+    if not characters:
+        banner("AGENT 3 — CHARACTER NAME SPECIALIST")
+        print(
+            "No entity_type=character_name found in this screenplay extraction.\n"
+            "Nothing to research with the Character Name Specialist."
+        )
 
     banner("END-TO-END SUMMARY")
-    print(f"Extraction entities:     {entities.entity_count}")
-    print(f"Business researched:     {len(results)}/{len(businesses)}")
-    for r in results:
-        cites = len(r.citations)
+    print(f"Extraction entities:              {entities.entity_count}")
+    print(f"Business researched:              {len(business_results)}/{len(businesses)}")
+    for r in business_results:
         print(
             f"  • {r.entity_name}: status={r.status.value} "
-            f"confidence={r.confidence:.2f} citations={cites}"
+            f"confidence={r.confidence:.2f} citations={len(r.citations)}"
+        )
+        print(f"    finding: {r.finding[:160]}{'...' if len(r.finding) > 160 else ''}")
+
+    print(
+        f"Character names researched:       "
+        f"{len(character_results)}/{len(characters)}"
+    )
+    for r in character_results:
+        print(
+            f"  • {r.entity_name}: status={r.status.value} "
+            f"confidence={r.confidence:.2f} citations={len(r.citations)}"
         )
         print(f"    finding: {r.finding[:160]}{'...' if len(r.finding) > 160 else ''}")
 
     print("\nDownstream agents not run (out of scope / not built yet):")
-    print("  - Character Name Specialist")
     print("  - Music Specialist")
     print("  - Risk Scoring Agent")
     print("  - Legal Review")
