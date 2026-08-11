@@ -39,6 +39,10 @@ from agents.music_specialist import (  # noqa: E402
     STATE_RESEARCH_RESULT as MUSIC_STATE_RESULT,
     music_specialist,
 )
+from agents.trademark_brand_specialist import (  # noqa: E402
+    STATE_RESEARCH_RESULT as TRADEMARK_STATE_RESULT,
+    trademark_brand_specialist,
+)
 from schemas.entities import Entities, Entity, EntityType  # noqa: E402
 from schemas.research_result import ResearchResult  # noqa: E402
 
@@ -203,6 +207,7 @@ async def main() -> int:
         e for e in entities.entities if e.entity_type == EntityType.CHARACTER_NAME
     ]
     songs = [e for e in entities.entities if e.entity_type == EntityType.SONG]
+    brands = [e for e in entities.entities if e.entity_type == EntityType.LOGO_BRAND]
 
     banner("ROUTING")
     print(f"Business entities → Business Specialist: {len(businesses)}")
@@ -214,11 +219,15 @@ async def main() -> int:
     print(f"Song entities → Music Specialist: {len(songs)}")
     for e in songs:
         print(f"  - {e.name}")
+    print(f"Logo/brand entities → Trademark/Brand Specialist: {len(brands)}")
+    for e in brands:
+        print(f"  - {e.name}")
 
     handled_types = {
         EntityType.BUSINESS,
         EntityType.CHARACTER_NAME,
         EntityType.SONG,
+        EntityType.LOGO_BRAND,
     }
     other = [e for e in entities.entities if e.entity_type not in handled_types]
     if other:
@@ -285,6 +294,28 @@ async def main() -> int:
             "Nothing to research with the Music Specialist."
         )
 
+    brand_results: list[ResearchResult] = []
+    for i, entity in enumerate(brands, start=1):
+        result = await run_specialist(
+            agent=trademark_brand_specialist,
+            state_key=TRADEMARK_STATE_RESULT,
+            research_agent_name="trademark_brand_research_agent",
+            entity_type_label="logo_brand",
+            title="AGENT 5 — TRADEMARK/BRAND SPECIALIST",
+            entity=entity,
+            index=i,
+            total=len(brands),
+        )
+        if result:
+            brand_results.append(result)
+
+    if not brands:
+        banner("AGENT 5 — TRADEMARK/BRAND SPECIALIST")
+        print(
+            "No entity_type=logo_brand found in this screenplay extraction.\n"
+            "Nothing to research with the Trademark/Brand Specialist."
+        )
+
     banner("END-TO-END SUMMARY")
     print(f"Extraction entities:              {entities.entity_count}")
     print(f"Business researched:              {len(business_results)}/{len(businesses)}")
@@ -308,6 +339,14 @@ async def main() -> int:
 
     print(f"Songs researched:                 {len(music_results)}/{len(songs)}")
     for r in music_results:
+        print(
+            f"  • {r.entity_name}: status={r.status.value} "
+            f"confidence={r.confidence:.2f} citations={len(r.citations)}"
+        )
+        print(f"    finding: {r.finding[:160]}{'...' if len(r.finding) > 160 else ''}")
+
+    print(f"Brands researched:                {len(brand_results)}/{len(brands)}")
+    for r in brand_results:
         print(
             f"  • {r.entity_name}: status={r.status.value} "
             f"confidence={r.confidence:.2f} citations={len(r.citations)}"
