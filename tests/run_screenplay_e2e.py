@@ -43,6 +43,10 @@ from agents.trademark_brand_specialist import (  # noqa: E402
     STATE_RESEARCH_RESULT as TRADEMARK_STATE_RESULT,
     trademark_brand_specialist,
 )
+from agents.address_specialist import (  # noqa: E402
+    STATE_RESEARCH_RESULT as ADDRESS_STATE_RESULT,
+    address_specialist,
+)
 from schemas.entities import Entities, Entity, EntityType  # noqa: E402
 from schemas.research_result import ResearchResult  # noqa: E402
 
@@ -208,6 +212,7 @@ async def main() -> int:
     ]
     songs = [e for e in entities.entities if e.entity_type == EntityType.SONG]
     brands = [e for e in entities.entities if e.entity_type == EntityType.LOGO_BRAND]
+    addresses = [e for e in entities.entities if e.entity_type == EntityType.ADDRESS]
 
     banner("ROUTING")
     print(f"Business entities → Business Specialist: {len(businesses)}")
@@ -222,12 +227,16 @@ async def main() -> int:
     print(f"Logo/brand entities → Trademark/Brand Specialist: {len(brands)}")
     for e in brands:
         print(f"  - {e.name}")
+    print(f"Address entities → Address Specialist: {len(addresses)}")
+    for e in addresses:
+        print(f"  - {e.name}")
 
     handled_types = {
         EntityType.BUSINESS,
         EntityType.CHARACTER_NAME,
         EntityType.SONG,
         EntityType.LOGO_BRAND,
+        EntityType.ADDRESS,
     }
     other = [e for e in entities.entities if e.entity_type not in handled_types]
     if other:
@@ -316,6 +325,28 @@ async def main() -> int:
             "Nothing to research with the Trademark/Brand Specialist."
         )
 
+    address_results: list[ResearchResult] = []
+    for i, entity in enumerate(addresses, start=1):
+        result = await run_specialist(
+            agent=address_specialist,
+            state_key=ADDRESS_STATE_RESULT,
+            research_agent_name="address_research_agent",
+            entity_type_label="address",
+            title="AGENT 6 — ADDRESS SPECIALIST",
+            entity=entity,
+            index=i,
+            total=len(addresses),
+        )
+        if result:
+            address_results.append(result)
+
+    if not addresses:
+        banner("AGENT 6 — ADDRESS SPECIALIST")
+        print(
+            "No entity_type=address found in this screenplay extraction.\n"
+            "Nothing to research with the Address Specialist."
+        )
+
     banner("END-TO-END SUMMARY")
     print(f"Extraction entities:              {entities.entity_count}")
     print(f"Business researched:              {len(business_results)}/{len(businesses)}")
@@ -347,6 +378,14 @@ async def main() -> int:
 
     print(f"Brands researched:                {len(brand_results)}/{len(brands)}")
     for r in brand_results:
+        print(
+            f"  • {r.entity_name}: status={r.status.value} "
+            f"confidence={r.confidence:.2f} citations={len(r.citations)}"
+        )
+        print(f"    finding: {r.finding[:160]}{'...' if len(r.finding) > 160 else ''}")
+
+    print(f"Addresses researched:             {len(address_results)}/{len(addresses)}")
+    for r in address_results:
         print(
             f"  • {r.entity_name}: status={r.status.value} "
             f"confidence={r.confidence:.2f} citations={len(r.citations)}"
