@@ -2,8 +2,8 @@
 """
 End-to-end demo: test_screenplay.txt → Extraction → available specialists.
 
-Shows each available agent's reply. Specialists not yet implemented
-(music / scoring / legal / gatekeeper) are listed as skipped.
+Shows each available agent's reply. Downstream agents not yet implemented
+(scoring / legal / gatekeeper) are listed as skipped.
 """
 from __future__ import annotations
 
@@ -35,6 +35,10 @@ from agents.character_name_specialist import (  # noqa: E402
     character_name_specialist,
 )
 from agents.extraction_agent import extractor  # noqa: E402
+from agents.music_specialist import (  # noqa: E402
+    STATE_RESEARCH_RESULT as MUSIC_STATE_RESULT,
+    music_specialist,
+)
 from schemas.entities import Entities, Entity, EntityType  # noqa: E402
 from schemas.research_result import ResearchResult  # noqa: E402
 
@@ -198,6 +202,7 @@ async def main() -> int:
     characters = [
         e for e in entities.entities if e.entity_type == EntityType.CHARACTER_NAME
     ]
+    songs = [e for e in entities.entities if e.entity_type == EntityType.SONG]
 
     banner("ROUTING")
     print(f"Business entities → Business Specialist: {len(businesses)}")
@@ -206,8 +211,15 @@ async def main() -> int:
     print(f"Character name entities → Character Name Specialist: {len(characters)}")
     for e in characters:
         print(f"  - {e.name}")
+    print(f"Song entities → Music Specialist: {len(songs)}")
+    for e in songs:
+        print(f"  - {e.name}")
 
-    handled_types = {EntityType.BUSINESS, EntityType.CHARACTER_NAME}
+    handled_types = {
+        EntityType.BUSINESS,
+        EntityType.CHARACTER_NAME,
+        EntityType.SONG,
+    }
     other = [e for e in entities.entities if e.entity_type not in handled_types]
     if other:
         print("\nNot yet implemented (skipped):")
@@ -251,6 +263,28 @@ async def main() -> int:
             "Nothing to research with the Character Name Specialist."
         )
 
+    music_results: list[ResearchResult] = []
+    for i, entity in enumerate(songs, start=1):
+        result = await run_specialist(
+            agent=music_specialist,
+            state_key=MUSIC_STATE_RESULT,
+            research_agent_name="music_research_agent",
+            entity_type_label="song",
+            title="AGENT 4 — MUSIC SPECIALIST",
+            entity=entity,
+            index=i,
+            total=len(songs),
+        )
+        if result:
+            music_results.append(result)
+
+    if not songs:
+        banner("AGENT 4 — MUSIC SPECIALIST")
+        print(
+            "No entity_type=song found in this screenplay extraction.\n"
+            "Nothing to research with the Music Specialist."
+        )
+
     banner("END-TO-END SUMMARY")
     print(f"Extraction entities:              {entities.entity_count}")
     print(f"Business researched:              {len(business_results)}/{len(businesses)}")
@@ -272,8 +306,15 @@ async def main() -> int:
         )
         print(f"    finding: {r.finding[:160]}{'...' if len(r.finding) > 160 else ''}")
 
+    print(f"Songs researched:                 {len(music_results)}/{len(songs)}")
+    for r in music_results:
+        print(
+            f"  • {r.entity_name}: status={r.status.value} "
+            f"confidence={r.confidence:.2f} citations={len(r.citations)}"
+        )
+        print(f"    finding: {r.finding[:160]}{'...' if len(r.finding) > 160 else ''}")
+
     print("\nDownstream agents not run (out of scope / not built yet):")
-    print("  - Music Specialist")
     print("  - Risk Scoring Agent")
     print("  - Legal Review")
     print("  - Gatekeeper clearance decision")
