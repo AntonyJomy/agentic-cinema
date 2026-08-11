@@ -1,0 +1,144 @@
+.projector {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 22px 32px 34px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.projector-lamp {
+  flex: 0 0 auto;
+  color: #D4A24C;
+  filter: drop-shadow(0 0 7px rgba(212, 162, 76, 0.65));
+  animation: projector-flicker 3.2s ease-in-out infinite;
+}
+
+.projector-lamp svg {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
+@keyframes projector-flicker {
+  0%, 100% { opacity: 1; }
+  48% { opacity: 0.82; }
+  52% { opacity: 1; }
+  75% { opacity: 0.9; }
+}
+
+.projector-track {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  background: #1E1F22;
+  border-radius: 3px;
+  margin: 0 12px;
+}
+
+.projector-track::before,
+.projector-track::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background-image: radial-gradient(circle, #1E1F22 1.4px, transparent 1.4px);
+  background-size: 16px 4px;
+  pointer-events: none;
+}
+
+.projector-track::before {
+  top: -10px;
+}
+
+.projector-track::after {
+  bottom: -10px;
+}
+
+.projector-beam {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #D4A24C 0%, #D4A24C 70%, rgba(212, 162, 76, 0.25) 100%);
+  box-shadow: 0 0 14px 1px rgba(212, 162, 76, 0.6);
+  transition: width 0.5s ease;
+}
+
+.projector-step {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  transform: translate(-50%, -50%);
+}
+
+.projector-node {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  background: #131315;
+  border: 1px solid #1E1F22;
+  color: #4A4A4D;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.projector-node svg {
+  width: 12px;
+  height: 12px;
+}
+
+.projector-step.is-lit .projector-node {
+  border-color: rgba(212, 162, 76, 0.5);
+  color: #D4A24C;
+  background: #1C1D20;
+}
+
+.projector-step.is-active .projector-node {
+  background: #D4A24C;
+  color: #0B0B0C;
+  box-shadow: 0 0 0 4px rgba(212, 162, 76, 0.18), 0 0 16px rgba(212, 162, 76, 0.75);
+}
+
+.projector-step.is-locked {
+  cursor: not-allowed;
+}
+
+.projector-step.is-locked .projector-node {
+  opacity: 0.6;
+}
+
+.projector-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: #4A4A4D;
+  white-space: nowrap;
+}
+
+.projector-step.is-lit .projector-label {
+  color: #A6A49C;
+}
+
+.projector-step.is-active .projector-label {
+  color: #F2F0EA;
+}
+
+@media (max-width: 640px) {
+  .projector-label {
+    display: none;
+  }
+}
