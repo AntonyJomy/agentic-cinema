@@ -49,6 +49,7 @@ from agents.address_specialist import (
 )
 from agents.business_specialist import (
     STATE_RESEARCH_RESULT as BUSINESS_STATE_RESULT,
+    build_business_specialist,
     business_specialist,
 )
 from agents.character_name_specialist import (
@@ -107,6 +108,13 @@ class SpecialistConfig:
     state_key: str
     agent_name: str
     display_name: str
+    agent_factory: Optional[Callable[[], object]] = None
+
+    def create_agent(self) -> object:
+        """Return a specialist agent instance for one entity research run."""
+        if self.agent_factory is not None:
+            return self.agent_factory()
+        return self.agent
 
 
 @dataclass
@@ -280,6 +288,7 @@ SPECIALISTS: List[SpecialistConfig] = [
     SpecialistConfig(
         entity_type=EntityType.BUSINESS,
         agent=business_specialist,
+        agent_factory=build_business_specialist,
         state_key=BUSINESS_STATE_RESULT,
         agent_name="business_research_agent",
         display_name="Business Specialist",
@@ -579,7 +588,7 @@ async def process_entity(
     print(f"  Context: {entity.context[:60]}..." if entity.context else "  Context: None")
     
     app_name = f"orchestrator_{entity.entity_type.value}_{entity_index}"
-    runner = InMemoryRunner(app_name=app_name, agent=specialist_config.agent)
+    runner = InMemoryRunner(app_name=app_name, agent=specialist_config.create_agent())
     
     session = await runner.session_service.create_session(
         app_name=app_name,
@@ -705,6 +714,16 @@ async def process_entity(
         return entity_result
 
 
+def _specialist_concurrency_limit() -> int:
+    """Max concurrent specialist runs (shared MCP + Gemini quota safety)."""
+    raw = os.getenv("SPECIALIST_CONCURRENCY", "3").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 3
+    return max(1, value)
+
+
 async def process_entities(
     entities: Entities,
     user_id: str = "orchestrator",
@@ -747,21 +766,27 @@ async def process_entities(
         display = ENTITY_TO_SPECIALIST[entity_type].display_name
         print(f"\n{display}: {count} entities")
 
-    print(f"\nLaunching {total_to_process} specialist tasks concurrently...")
+    concurrency = _specialist_concurrency_limit()
+    print(
+        f"\nLaunching {total_to_process} specialist tasks "
+        f"(concurrency limit={concurrency})..."
+    )
+    semaphore = asyncio.Semaphore(concurrency)
 
     async def run_one(
         index: int,
         entity: Entity,
         specialist_config: SpecialistConfig,
     ) -> EntityResult:
-        return await process_entity(
-            entity=entity,
-            specialist_config=specialist_config,
-            user_id=user_id,
-            entity_index=index,
-            total_entities=total_to_process,
-            on_progress=on_progress,
-        )
+        async with semaphore:
+            return await process_entity(
+                entity=entity,
+                specialist_config=specialist_config,
+                user_id=user_id,
+                entity_index=index,
+                total_entities=total_to_process,
+                on_progress=on_progress,
+            )
 
     gathered = await asyncio.gather(
         *[
