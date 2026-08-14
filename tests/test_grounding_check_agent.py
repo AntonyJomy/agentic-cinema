@@ -22,8 +22,6 @@ if os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
 
 from agents.grounding_check_agent import (  # noqa: E402
     apply_grounding_filter,
-    build_grounding_prompt,
-    grounding_checker,
 )
 from orchestrator import run_grounding_check  # noqa: E402
 from schemas.entities import (  # noqa: E402
@@ -33,9 +31,6 @@ from schemas.entities import (  # noqa: E402
     ExtractionMetadata,
     ScriptLocation,
 )
-from google.adk.runners import Runner  # noqa: E402
-from google.adk.sessions import InMemorySessionService  # noqa: E402
-from google.genai import types  # noqa: E402
 
 TEST_SCREENPLAY = """INT. CAFE - DAY
 
@@ -121,14 +116,9 @@ def build_test_entities() -> Entities:
 
 
 async def test_grounding_check_agent() -> bool:
-    """Run grounding check and verify grounded vs rejected entities."""
-    if not os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-        print("ERROR: GOOGLE_API_KEY or GEMINI_API_KEY required")
-        return False
-
+    """Run deterministic grounding via orchestrator and verify filter results."""
     input_entities = build_test_entities()
     print(f"Input entities: {input_entities.entity_count}")
-    print(f"Prompt length: {len(build_grounding_prompt(TEST_SCREENPLAY, input_entities))} chars\n")
 
     grounded_entities = await run_grounding_check(
         TEST_SCREENPLAY,
