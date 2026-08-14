@@ -40,14 +40,16 @@ STATE_RECHECK_FEEDBACK = "confidence_recheck_feedback"
 MIN_EVIDENCE_CONFIDENCE = 0.75
 
 
-business_research_agent = LlmAgent(
-    model=MODEL,
-    name="business_research_agent",
-    description=(
-        "Researches one business Entity via Parallel Search MCP and produces "
-        "a structured ResearchResult with citations."
-    ),
-    instruction=f"""
+def build_business_specialist() -> LoopAgent:
+    """Build a Business specialist with a fresh Parallel MCP toolset."""
+    business_research_agent = LlmAgent(
+        model=MODEL,
+        name="business_research_agent",
+        description=(
+            "Researches one business Entity via Parallel Search MCP and produces "
+            "a structured ResearchResult with citations."
+        ),
+        instruction=f"""
 You are the Business Research Specialist in a screenplay E&O clearance system.
 
 OBJECTIVE:
@@ -97,21 +99,22 @@ PROCESS:
 FAILURE HANDLING:
 - If Parallel fails: status=tool_failure, confidence low, finding states the tool/research failure, citations may be empty.
 - If no credible evidence: status=insufficient_evidence, say so explicitly, do not guess.
+- If web_search is not available among your tools, do NOT invent a web_search call.
+  Call set_model_response with status=tool_failure explaining that search tools were unavailable.
 """,
-    tools=[build_parallel_mcp_toolset()],
-    output_schema=ResearchResult,
-    output_key=STATE_RESEARCH_RESULT,
-)
+        tools=[build_parallel_mcp_toolset()],
+        output_schema=ResearchResult,
+        output_key=STATE_RESEARCH_RESULT,
+    )
 
-
-confidence_recheck_agent = LlmAgent(
-    model=MODEL,
-    name="confidence_recheck_agent",
-    description=(
-        "Checks whether business research evidence is strong enough; "
-        "exits the loop when sufficient, otherwise requests refined research."
-    ),
-    instruction=f"""
+    confidence_recheck_agent = LlmAgent(
+        model=MODEL,
+        name="confidence_recheck_agent",
+        description=(
+            "Checks whether business research evidence is strong enough; "
+            "exits the loop when sufficient, otherwise requests refined research."
+        ),
+        instruction=f"""
 You are the Confidence Re-check Agent for the Business Research Specialist.
 
 You assess RESEARCH EVIDENCE QUALITY only.
@@ -145,26 +148,28 @@ unlikely to help (e.g. Parallel already failed, or the name is too generic
 with no location cues):
 - Call exit_loop so the pipeline can return the honest failure/insufficient result.
 """,
-    tools=[exit_loop],
-    output_key=STATE_RECHECK_FEEDBACK,
-)
+        tools=[exit_loop],
+        output_key=STATE_RECHECK_FEEDBACK,
+    )
+
+    # LoopAgent is deprecated in google-adk 2.6.x in favor of Workflow, but remains
+    # the correct API for this ticket's confidence re-check requirement and still
+    # functions with max_iterations + exit_loop escalation.
+    return LoopAgent(
+        name="business_specialist",
+        description=(
+            "Business Research Specialist: Parallel MCP research + confidence "
+            "re-check loop for one business Entity."
+        ),
+        sub_agents=[
+            business_research_agent,
+            confidence_recheck_agent,
+        ],
+        max_iterations=2,
+    )
 
 
-# LoopAgent is deprecated in google-adk 2.6.x in favor of Workflow, but remains
-# the correct API for this ticket's confidence re-check requirement and still
-# functions with max_iterations + exit_loop escalation.
-business_specialist = LoopAgent(
-    name="business_specialist",
-    description=(
-        "Business Research Specialist: Parallel MCP research + confidence "
-        "re-check loop for one business Entity."
-    ),
-    sub_agents=[
-        business_research_agent,
-        confidence_recheck_agent,
-    ],
-    max_iterations=2,
-)
+business_specialist = build_business_specialist()
 
 # ADK convention alias when loading the agent package interactively.
 root_agent = business_specialist
