@@ -90,3 +90,10 @@
   font-family: 'Inter', sans-serif;
   font-size: 14px;
 }
+
+.upload-extract-info {
+  margin: 0;
+  color: #8B8A85;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+}

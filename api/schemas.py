@@ -13,6 +13,17 @@ class ClearanceRequest(BaseModel):
     script_title: str | None = Field(None, description="Optional script title")
 
 
+class ExtractScriptResponse(BaseModel):
+    """POST /extract-script response body."""
+
+    script: str = Field(..., description="Extracted screenplay text")
+    filename: str = Field(..., description="Original uploaded filename")
+    page_count: int | None = Field(
+        None, description="PDF page count when source was a PDF"
+    )
+    script_title: str | None = Field(None, description="Optional script title")
+
+
 class ClearanceEntityResponse(BaseModel):
     """Entity shape compatible with the frontend run document."""
 
