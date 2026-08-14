@@ -3,13 +3,15 @@
   top: 0;
   z-index: 10;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 24px;
-  background: rgba(11, 11, 12, 0.85);
+  flex-direction: column;
+  background: rgba(11, 11, 12, 0.9);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid #1E1F22;
+}
+
+.app-header-top {
+  padding: 16px 24px 0;
 }
 
 .app-header-brand {
@@ -22,35 +24,4 @@
 
 .app-header-brand span {
   color: #D4A24C;
-}
-
-.app-header-nav {
-  display: flex;
-  gap: 6px;
-}
-
-.app-header-link {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  letter-spacing: 0.03em;
-  color: #A6A49C;
-  text-decoration: none;
-  padding: 7px 14px;
-  border-radius: 7px;
-}
-
-.app-header-link:hover {
-  color: #F2F0EA;
-}
-
-.app-header-link.is-active {
-  color: #D4A24C;
-  background: rgba(212, 162, 76, 0.1);
-}
-
-@media (max-width: 640px) {
-  .app-header {
-    flex-direction: column;
-    gap: 10px;
-  }
 }

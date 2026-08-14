@@ -1,8 +1,10 @@
-import { Routes, Route, Outlet } from 'react-router-dom';
+import { Routes, Route, Outlet, Navigate, useLocation } from 'react-router-dom';
 import ScrollStory from './ScrollStory';
 import Features from './Features';
 import AppHeader from './components/AppHeader';
 import { RunProvider } from './context/RunContext';
+import { useRun } from './context/useRun';
+import { STEPS, getMaxStepIndex } from './context/steps';
 import UploadPage from './pages/UploadPage';
 import ProcessingPage from './pages/ProcessingPage';
 import FindingsPage from './pages/FindingsPage';
@@ -21,6 +23,17 @@ function Landing() {
 }
 
 function AppLayout() {
+  const runCtx = useRun();
+  const location = useLocation();
+  const maxStep = getMaxStepIndex(runCtx);
+  const currentStep = STEPS.findIndex((s) => s.path === location.pathname);
+
+  // Steps are sequential — jumping ahead (via nav, back button, or a typed
+  // URL) bounces back to the furthest step the run has actually reached.
+  if (currentStep > maxStep) {
+    return <Navigate to={STEPS[maxStep].path} replace />;
+  }
+
   return (
     <div className="app-shell">
       <AppHeader />
