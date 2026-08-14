@@ -27,7 +27,21 @@
   font-size: 14px;
 }
 
-.upload-field input:focus {
+.upload-field textarea {
+  background: #0B0B0C;
+  border: 1px solid #1E1F22;
+  border-radius: 8px;
+  padding: 11px 14px;
+  color: #F2F0EA;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 140px;
+}
+
+.upload-field input:focus,
+.upload-field textarea:focus {
   outline: none;
   border-color: rgba(212, 162, 76, 0.5);
 }
@@ -68,4 +82,18 @@
 
 .upload-cta {
   align-self: flex-start;
+}
+
+.upload-error {
+  margin: 0;
+  color: #E57373;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+}
+
+.upload-extract-info {
+  margin: 0;
+  color: #8B8A85;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
 }

@@ -23,9 +23,9 @@ function Landing() {
 }
 
 function AppLayout() {
-  const { run } = useRun();
+  const runCtx = useRun();
   const location = useLocation();
-  const maxStep = getMaxStepIndex(run);
+  const maxStep = getMaxStepIndex(runCtx);
   const currentStep = STEPS.findIndex((s) => s.path === location.pathname);
 
   // Steps are sequential — jumping ahead (via nav, back button, or a typed
