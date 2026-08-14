@@ -2,6 +2,7 @@ pydantic>=2.5
 google-cloud-firestore>=2.28
 google-genai
 python-dotenv>=1.0.0
+firebase-admin>=6.5.0
 # google-adk[mcp] pulls the official `mcp` client library required by McpToolset.
 # Docs: https://google.github.io/adk-docs/tools-custom/mcp-tools/
 google-adk[mcp]>=1.0.0
