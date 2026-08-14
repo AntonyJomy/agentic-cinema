@@ -26,10 +26,11 @@ import asyncio
 import json
 import os
 import sys
-from dataclasses import dataclass
+import time
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional, Union
 
 from dotenv import load_dotenv
 from google.adk.runners import InMemoryRunner, Runner
@@ -137,6 +138,143 @@ class PipelineResult:
         return (self.end_time - self.start_time).total_seconds()
 
 
+@dataclass
+class ClearancePipelineResult:
+    """Structured output from a full clearance pipeline run."""
+
+    screenplay_path: str
+    screenplay_text: str
+    extracted_entities: Entities
+    grounded_entities: Entities
+    entity_results: Dict[EntityType, List[EntityResult]]
+    summary_result: SummaryResult
+    legal_review: LegalReviewPackage
+    gatekeeper_result: GatekeeperResult
+    report: Dict
+    start_time: datetime
+    end_time: datetime
+
+    @property
+    def duration_seconds(self) -> float:
+        return (self.end_time - self.start_time).total_seconds()
+
+
+ProgressCallback = Callable[["PipelineProgressEvent"], Union[None, Awaitable[None]]]
+
+
+@dataclass
+class PipelineProgressEvent:
+    """Real-time pipeline progress event for streaming UIs."""
+
+    event: str
+    agent_id: str
+    agent_name: str
+    phase: str
+    status: str = "running"
+    duration_seconds: float | None = None
+    entity_name: str | None = None
+    entity_type: str | None = None
+    output: dict | None = None
+    message: str | None = None
+
+    def to_dict(self) -> dict:
+        return {key: value for key, value in asdict(self).items() if value is not None}
+
+
+async def _emit_progress(
+    on_progress: ProgressCallback | None,
+    progress_event: PipelineProgressEvent,
+) -> None:
+    if not on_progress:
+        return
+    result = on_progress(progress_event)
+    if asyncio.iscoroutine(result):
+        await result
+
+
+def _extraction_output(entities: Entities) -> dict:
+    return {
+        "entity_count": entities.entity_count,
+        "entities": [
+            {
+                "name": entity.name,
+                "entity_type": entity.entity_type.value,
+                "confidence": entity.confidence,
+            }
+            for entity in entities.entities
+        ],
+    }
+
+
+def _grounding_output(
+    *,
+    extracted_count: int,
+    grounded: List[Entity],
+    rejected: List[Entity],
+) -> dict:
+    return {
+        "extracted_count": extracted_count,
+        "grounded_count": len(grounded),
+        "rejected_count": len(rejected),
+        "grounded": [entity.name for entity in grounded],
+        "rejected": [entity.name for entity in rejected],
+    }
+
+
+def _specialist_output(entity_result: EntityResult) -> dict:
+    research = entity_result.research_result
+    return {
+        "entity_name": entity_result.entity.name,
+        "entity_type": entity_result.entity.entity_type.value,
+        "success": entity_result.success,
+        "research_status": research.status.value if research else None,
+        "finding": research.finding if research else None,
+        "confidence": research.confidence if research else None,
+        "citation_count": len(research.citations) if research else 0,
+        "error": entity_result.error,
+    }
+
+
+def _risk_scoring_output(risk_result: RiskResult) -> dict:
+    return {
+        "entity_name": risk_result.entity_name,
+        "entity_type": risk_result.entity_type.value,
+        "risk_level": risk_result.risk_level.value,
+        "triggered_rule": risk_result.triggered_rule,
+        "requires_human_review": risk_result.requires_human_review,
+        "reasoning": risk_result.reasoning,
+    }
+
+
+def _summary_output(summary: SummaryResult) -> dict:
+    return {
+        "total_entities": summary.total_entities,
+        "clear_count": summary.clear_count,
+        "caution_count": summary.caution_count,
+        "high_risk_count": summary.high_risk_count,
+        "overall_summary": summary.overall_summary,
+        "priority_items": summary.priority_items,
+    }
+
+
+def _legal_review_output(package: LegalReviewPackage) -> dict:
+    return {
+        "pending_review_count": package.pending_review_count,
+        "overall_decision": package.overall_decision.value,
+        "unresolved_required_count": package.unresolved_required_count,
+    }
+
+
+def _gatekeeper_output(result: GatekeeperResult) -> dict:
+    return {
+        "status": result.status.value,
+        "reason": result.reason.value,
+        "cleared_for_export": result.cleared_for_export,
+        "message": result.message,
+        "blocking_entity_ids": result.blocking_entity_ids,
+    }
+
+
 # Specialist configurations
 SPECIALISTS: List[SpecialistConfig] = [
     SpecialistConfig(
@@ -196,11 +334,27 @@ UNIMPLEMENTED_TYPES = {
 }
 
 
-async def run_extraction(screenplay_text: str, user_id: str = "orchestrator") -> Entities:
+async def run_extraction(
+    screenplay_text: str,
+    user_id: str = "orchestrator",
+    on_progress: ProgressCallback | None = None,
+) -> Entities:
     """Run extraction agent on screenplay text."""
     print("\n" + "="*80)
     print("STEP 1: EXTRACTION AGENT")
     print("="*80)
+
+    start_time = time.perf_counter()
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_start",
+            agent_id="extraction",
+            agent_name="Extraction Agent",
+            phase="extraction",
+            status="running",
+        ),
+    )
     
     session_service = InMemorySessionService()
     runner = Runner(
@@ -255,6 +409,20 @@ async def run_extraction(screenplay_text: str, user_id: str = "orchestrator") ->
               f"type={entity.entity_type.value:30} "
               f"risk={risk_str:15} "
               f"conf={entity.confidence:.2f}")
+
+    duration = time.perf_counter() - start_time
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_complete",
+            agent_id="extraction",
+            agent_name="Extraction Agent",
+            phase="extraction",
+            status="success",
+            duration_seconds=round(duration, 2),
+            output=_extraction_output(entities),
+        ),
+    )
     
     return entities
 
@@ -263,14 +431,44 @@ async def run_grounding_check(
     screenplay_text: str,
     entities: Entities,
     user_id: str = "orchestrator",
+    on_progress: ProgressCallback | None = None,
 ) -> Entities:
     """Run grounding check agent and return filtered Entities."""
     print("\n" + "=" * 80)
     print("STEP 2: GROUNDING CHECK AGENT")
     print("=" * 80)
 
+    start_time = time.perf_counter()
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_start",
+            agent_id="grounding",
+            agent_name="Grounding Check Agent",
+            phase="grounding",
+            status="running",
+        ),
+    )
+
     if entities.entity_count == 0:
         print("\nNo entities to ground.")
+        duration = time.perf_counter() - start_time
+        await _emit_progress(
+            on_progress,
+            PipelineProgressEvent(
+                event="agent_complete",
+                agent_id="grounding",
+                agent_name="Grounding Check Agent",
+                phase="grounding",
+                status="success",
+                duration_seconds=round(duration, 2),
+                output=_grounding_output(
+                    extracted_count=0,
+                    grounded=[],
+                    rejected=[],
+                ),
+            ),
+        )
         return entities
 
     session_service = InMemorySessionService()
@@ -328,6 +526,24 @@ async def run_grounding_check(
         f"{len(grounded)} grounded, {len(rejected)} rejected"
     )
 
+    duration = time.perf_counter() - start_time
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_complete",
+            agent_id="grounding",
+            agent_name="Grounding Check Agent",
+            phase="grounding",
+            status="success",
+            duration_seconds=round(duration, 2),
+            output=_grounding_output(
+                extracted_count=entities.entity_count,
+                grounded=grounded,
+                rejected=rejected,
+            ),
+        ),
+    )
+
     return filtered
 
 
@@ -336,10 +552,26 @@ async def process_entity(
     specialist_config: SpecialistConfig,
     user_id: str,
     entity_index: int,
-    total_entities: int
+    total_entities: int,
+    on_progress: ProgressCallback | None = None,
 ) -> EntityResult:
     """Process a single entity with its specialist agent."""
-    start_time = datetime.now()
+    agent_id = f"specialist_{entity.entity_type.value}_{entity.entity_id[:8]}"
+    start_time = time.perf_counter()
+
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_start",
+            agent_id=agent_id,
+            agent_name=specialist_config.display_name,
+            phase="specialist",
+            status="running",
+            entity_name=entity.name,
+            entity_type=entity.entity_type.value,
+            message=f"Researching entity {entity_index}/{total_entities}",
+        ),
+    )
     
     print(f"\nProcessing entity {entity_index}/{total_entities}:")
     print(f"  Type: {specialist_config.display_name}")
@@ -403,9 +635,8 @@ async def process_entity(
         research_result = None
         if raw_result is not None:
             research_result = ResearchResult.model_validate(raw_result)
-        
-        end_time = datetime.now()
-        processing_time = (end_time - start_time).total_seconds()
+
+        processing_time = time.perf_counter() - start_time
         
         success = research_result is not None and research_result.status != ResearchStatus.TOOL_FAILURE
         
@@ -415,8 +646,8 @@ async def process_entity(
             print(f"  Status: {research_result.status.value}")
             print(f"  Confidence: {research_result.confidence:.2f}")
             print(f"  Citations: {len(research_result.citations)}")
-        
-        return EntityResult(
+
+        entity_result = EntityResult(
             entity=entity,
             research_result=research_result,
             specialist_config=specialist_config,
@@ -424,15 +655,30 @@ async def process_entity(
             success=success,
             error=None
         )
+        duration = time.perf_counter() - start_time
+        await _emit_progress(
+            on_progress,
+            PipelineProgressEvent(
+                event="agent_complete",
+                agent_id=agent_id,
+                agent_name=specialist_config.display_name,
+                phase="specialist",
+                status="success" if success else "failed",
+                duration_seconds=round(duration, 2),
+                entity_name=entity.name,
+                entity_type=entity.entity_type.value,
+                output=_specialist_output(entity_result),
+            ),
+        )
+        return entity_result
         
     except Exception as e:
-        end_time = datetime.now()
-        processing_time = (end_time - start_time).total_seconds()
+        processing_time = time.perf_counter() - start_time
         
         print(f"  Result: ERROR (time: {processing_time:.1f}s)")
         print(f"  Error: {str(e)}")
-        
-        return EntityResult(
+
+        entity_result = EntityResult(
             entity=entity,
             research_result=None,
             specialist_config=specialist_config,
@@ -440,15 +686,33 @@ async def process_entity(
             success=False,
             error=str(e)
         )
+        duration = time.perf_counter() - start_time
+        await _emit_progress(
+            on_progress,
+            PipelineProgressEvent(
+                event="agent_complete",
+                agent_id=agent_id,
+                agent_name=specialist_config.display_name,
+                phase="specialist",
+                status="failed",
+                duration_seconds=round(duration, 2),
+                entity_name=entity.name,
+                entity_type=entity.entity_type.value,
+                output=_specialist_output(entity_result),
+                message=str(e),
+            ),
+        )
+        return entity_result
 
 
 async def process_entities(
     entities: Entities,
-    user_id: str = "orchestrator"
+    user_id: str = "orchestrator",
+    on_progress: ProgressCallback | None = None,
 ) -> Dict[EntityType, List[EntityResult]]:
-    """Process all entities with their respective specialist agents."""
+    """Process all grounded entities with specialist agents in parallel."""
     print("\n" + "="*80)
-    print("STEP 3: SPECIALIST PROCESSING")
+    print("STEP 3: SPECIALIST PROCESSING (PARALLEL)")
     print("="*80)
     
     # Group entities by type
@@ -458,37 +722,60 @@ async def process_entities(
             entities_by_type[entity.entity_type] = []
         entities_by_type[entity.entity_type].append(entity)
     
-    # Track results
-    results: Dict[EntityType, List[EntityResult]] = {}
-    
-    # Process entities for each implemented specialist
-    total_processed = 0
-    total_to_process = sum(
-        len(entities_by_type.get(cfg.entity_type, []))
-        for cfg in SPECIALISTS
-        if cfg.entity_type in entities_by_type
-    )
-    
+    work_items: List[tuple[Entity, SpecialistConfig]] = []
     for specialist_config in SPECIALISTS:
-        entity_type = specialist_config.entity_type
-        type_entities = entities_by_type.get(entity_type, [])
-        
-        if not type_entities:
-            continue
-        
-        print(f"\n{specialist_config.display_name}: {len(type_entities)} entities")
-        results[entity_type] = []
-        
-        for i, entity in enumerate(type_entities, 1):
-            total_processed += 1
-            result = await process_entity(
-                entity=entity,
-                specialist_config=specialist_config,
-                user_id=user_id,
-                entity_index=total_processed,
-                total_entities=total_to_process
-            )
-            results[entity_type].append(result)
+        for entity in entities_by_type.get(specialist_config.entity_type, []):
+            work_items.append((entity, specialist_config))
+
+    total_to_process = len(work_items)
+    if total_to_process == 0:
+        for entity_type in UNIMPLEMENTED_TYPES:
+            if entity_type in entities_by_type:
+                count = len(entities_by_type[entity_type])
+                print(
+                    f"\n⚠️  WARNING: {entity_type.value} entities ({count} found) "
+                    "- no specialist implemented yet"
+                )
+        return {}
+
+    type_counts: Dict[EntityType, int] = {}
+    for entity, specialist_config in work_items:
+        type_counts[specialist_config.entity_type] = (
+            type_counts.get(specialist_config.entity_type, 0) + 1
+        )
+    for entity_type, count in type_counts.items():
+        display = ENTITY_TO_SPECIALIST[entity_type].display_name
+        print(f"\n{display}: {count} entities")
+
+    print(f"\nLaunching {total_to_process} specialist tasks concurrently...")
+
+    async def run_one(
+        index: int,
+        entity: Entity,
+        specialist_config: SpecialistConfig,
+    ) -> EntityResult:
+        return await process_entity(
+            entity=entity,
+            specialist_config=specialist_config,
+            user_id=user_id,
+            entity_index=index,
+            total_entities=total_to_process,
+            on_progress=on_progress,
+        )
+
+    gathered = await asyncio.gather(
+        *[
+            run_one(index, entity, specialist_config)
+            for index, (entity, specialist_config) in enumerate(work_items, start=1)
+        ]
+    )
+
+    results: Dict[EntityType, List[EntityResult]] = {}
+    for entity_result in gathered:
+        entity_type = entity_result.entity.entity_type
+        if entity_type not in results:
+            results[entity_type] = []
+        results[entity_type].append(entity_result)
     
     # Warn about unimplemented entity types
     for entity_type in UNIMPLEMENTED_TYPES:
@@ -520,8 +807,26 @@ async def score_entity_risk(
     user_id: str = "orchestrator",
     entity_index: int = 1,
     total_entities: int = 1,
+    on_progress: ProgressCallback | None = None,
 ) -> RiskResult:
     """Score one entity using the Risk Scoring Agent."""
+    agent_id = f"risk_scoring_{entity.entity_id[:8]}"
+    start_time = time.perf_counter()
+
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_start",
+            agent_id=agent_id,
+            agent_name="Risk Scoring Agent",
+            phase="risk_scoring",
+            status="running",
+            entity_name=entity.name,
+            entity_type=entity.entity_type.value,
+            message=f"Scoring entity {entity_index}/{total_entities}",
+        ),
+    )
+
     print(f"\nScoring entity {entity_index}/{total_entities}:")
     print(f"  Name: {entity.name}")
     print(f"  Type: {entity.entity_type.value}")
@@ -567,64 +872,56 @@ async def score_entity_risk(
     if risk_result.requires_human_review:
         print("  ⚠️  Requires human review")
 
+    duration = time.perf_counter() - start_time
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_complete",
+            agent_id=agent_id,
+            agent_name="Risk Scoring Agent",
+            phase="risk_scoring",
+            status="success",
+            duration_seconds=round(duration, 2),
+            entity_name=entity.name,
+            entity_type=entity.entity_type.value,
+            output=_risk_scoring_output(risk_result),
+        ),
+    )
+
     return risk_result
 
 
 async def run_risk_scoring(
     entity_results: Dict[EntityType, List[EntityResult]],
     user_id: str = "orchestrator",
+    on_progress: ProgressCallback | None = None,
 ) -> Dict[EntityType, List[EntityResult]]:
-    """Run risk scoring for all entities with research results."""
+    """Run risk scoring for all entities with research results in parallel."""
     print("\n" + "=" * 80)
-    print("STEP 4: RISK SCORING AGENT")
+    print("STEP 4: RISK SCORING AGENT (PARALLEL)")
     print("=" * 80)
 
-    scoreable = [
+    flat_results = [
         result
-        for results in entity_results.values()
-        for result in results
-        if result.research_result is not None
+        for results_list in entity_results.values()
+        for result in results_list
     ]
+    scoreable = [result for result in flat_results if result.research_result is not None]
     total = len(scoreable)
+
+    if not flat_results:
+        print("\nNo entities to score.")
+        return entity_results
 
     if total == 0:
         print("\nNo research results available to score.")
-        return entity_results
-
-    scored_results: Dict[EntityType, List[EntityResult]] = {}
-    score_index = 0
-
-    for entity_type, results_list in entity_results.items():
-        scored_results[entity_type] = []
-        for result in results_list:
-            if result.research_result is None:
-                fallback = build_fallback_risk_result(
-                    result.entity,
-                    "Specialist research was not available; manual review recommended.",
-                )
-                scored_results[entity_type].append(
-                    EntityResult(
-                        entity=result.entity,
-                        research_result=result.research_result,
-                        specialist_config=result.specialist_config,
-                        processing_time=result.processing_time,
-                        success=result.success,
-                        error=result.error,
-                        risk_result=fallback,
-                    )
-                )
-                print(f"\n  ✗ {result.entity.name} — no research; assigned caution")
-                continue
-
-            score_index += 1
-            risk_result = await score_entity_risk(
-                entity=result.entity,
-                research_result=result.research_result,
-                user_id=user_id,
-                entity_index=score_index,
-                total_entities=total,
+        scored_results: Dict[EntityType, List[EntityResult]] = {}
+        for result in flat_results:
+            fallback = build_fallback_risk_result(
+                result.entity,
+                "Specialist research was not available; manual review recommended.",
             )
-            scored_results[entity_type].append(
+            scored_results.setdefault(result.entity.entity_type, []).append(
                 EntityResult(
                     entity=result.entity,
                     research_result=result.research_result,
@@ -632,9 +929,68 @@ async def run_risk_scoring(
                     processing_time=result.processing_time,
                     success=result.success,
                     error=result.error,
-                    risk_result=risk_result,
+                    risk_result=fallback,
                 )
             )
+            print(f"\n  ✗ {result.entity.name} — no research; assigned caution")
+        return scored_results
+
+    print(f"\nLaunching {total} risk scoring tasks concurrently...")
+
+    async def score_one(
+        result: EntityResult,
+        entity_index: int,
+    ) -> EntityResult:
+        if result.research_result is None:
+            fallback = build_fallback_risk_result(
+                result.entity,
+                "Specialist research was not available; manual review recommended.",
+            )
+            print(f"\n  ✗ {result.entity.name} — no research; assigned caution")
+            return EntityResult(
+                entity=result.entity,
+                research_result=result.research_result,
+                specialist_config=result.specialist_config,
+                processing_time=result.processing_time,
+                success=result.success,
+                error=result.error,
+                risk_result=fallback,
+            )
+
+        risk_result = await score_entity_risk(
+            entity=result.entity,
+            research_result=result.research_result,
+            user_id=user_id,
+            entity_index=entity_index,
+            total_entities=total,
+            on_progress=on_progress,
+        )
+        return EntityResult(
+            entity=result.entity,
+            research_result=result.research_result,
+            specialist_config=result.specialist_config,
+            processing_time=result.processing_time,
+            success=result.success,
+            error=result.error,
+            risk_result=risk_result,
+        )
+
+    scoreable_index = {
+        id(result): index for index, result in enumerate(scoreable, start=1)
+    }
+    scored_flat = await asyncio.gather(
+        *[
+            score_one(
+                result,
+                scoreable_index.get(id(result), 1),
+            )
+            for result in flat_results
+        ]
+    )
+
+    scored_results: Dict[EntityType, List[EntityResult]] = {}
+    for entity_result in scored_flat:
+        scored_results.setdefault(entity_result.entity.entity_type, []).append(entity_result)
 
     clear_count = sum(
         1
@@ -667,11 +1023,24 @@ async def run_summary(
     entity_results: Dict[EntityType, List[EntityResult]],
     script_title: str | None = None,
     user_id: str = "orchestrator",
+    on_progress: ProgressCallback | None = None,
 ) -> SummaryResult:
     """Run summary agent over completed risk-scoring results."""
     print("\n" + "=" * 80)
     print("STEP 5: SUMMARY AGENT")
     print("=" * 80)
+
+    start_time = time.perf_counter()
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_start",
+            agent_id="summary",
+            agent_name="Summary Agent",
+            phase="summary",
+            status="running",
+        ),
+    )
 
     risk_results = collect_risk_results(entity_results)
     if not risk_results:
@@ -684,6 +1053,19 @@ async def run_summary(
             priority_items=[],
         )
         print("\nNo risk results to summarise.")
+        duration = time.perf_counter() - start_time
+        await _emit_progress(
+            on_progress,
+            PipelineProgressEvent(
+                event="agent_complete",
+                agent_id="summary",
+                agent_name="Summary Agent",
+                phase="summary",
+                status="success",
+                duration_seconds=round(duration, 2),
+                output=_summary_output(empty),
+            ),
+        )
         return empty
 
     session_service = InMemorySessionService()
@@ -728,6 +1110,20 @@ async def run_summary(
         print("\nPriority items:")
         for item in summary.priority_items:
             print(f"  • {item}")
+
+    duration = time.perf_counter() - start_time
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_complete",
+            agent_id="summary",
+            agent_name="Summary Agent",
+            phase="summary",
+            status="success",
+            duration_seconds=round(duration, 2),
+            output=_summary_output(summary),
+        ),
+    )
 
     return summary
 
@@ -933,7 +1329,9 @@ def generate_report(
             f"{failed_researches} research attempts failed. Manual verification needed."
         )
     
-    if not high_risk_entities and not caution_entities:
+    if not high_risk_entities and not caution_entities and (
+        not gatekeeper_result or gatekeeper_result.cleared_for_export
+    ):
         report["recommendations"].append(
             "No significant risks identified. Script appears to be legally clear."
         )
@@ -949,6 +1347,142 @@ def generate_report(
         )
     
     return report
+
+
+async def run_clearance_pipeline(
+    screenplay_text: str,
+    *,
+    screenplay_path: str = "<inline>",
+    user_id: str = "orchestrator",
+    legal_review: LegalReviewPackage | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> ClearancePipelineResult:
+    """
+    Run the full clearance pipeline from screenplay text to gatekeeper result.
+
+    If ``legal_review`` is supplied, it is used instead of building a fresh
+    package (for testing explicit human decisions). Otherwise a new legal
+    review package is created with all entities defaulting to NEEDS_REVIEW.
+    """
+    start_time = datetime.now()
+
+    extracted_entities = await run_extraction(
+        screenplay_text,
+        user_id=user_id,
+        on_progress=on_progress,
+    )
+    if extracted_entities.entity_count == 0:
+        raise RuntimeError("No entities extracted from screenplay")
+
+    grounded_entities = await run_grounding_check(
+        screenplay_text,
+        extracted_entities,
+        user_id=user_id,
+        on_progress=on_progress,
+    )
+    if grounded_entities.entity_count == 0:
+        raise RuntimeError("No grounded entities remain after grounding check")
+
+    entity_results = await process_entities(
+        grounded_entities,
+        user_id=user_id,
+        on_progress=on_progress,
+    )
+    entity_results = await run_risk_scoring(
+        entity_results,
+        user_id=user_id,
+        on_progress=on_progress,
+    )
+    summary_result = await run_summary(
+        entity_results,
+        script_title=grounded_entities.script_title,
+        user_id=user_id,
+        on_progress=on_progress,
+    )
+
+    legal_start = time.perf_counter()
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_start",
+            agent_id="legal_review",
+            agent_name="Legal Review Setup",
+            phase="legal_review",
+            status="running",
+        ),
+    )
+    if legal_review is None:
+        legal_review = run_legal_review_setup(
+            entity_results,
+            run_id=grounded_entities.run_id,
+            script_id=grounded_entities.script_id,
+            script_title=grounded_entities.script_title,
+            summary_result=summary_result,
+        )
+    legal_duration = time.perf_counter() - legal_start
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_complete",
+            agent_id="legal_review",
+            agent_name="Legal Review Setup",
+            phase="legal_review",
+            status="success",
+            duration_seconds=round(legal_duration, 2),
+            output=_legal_review_output(legal_review),
+        ),
+    )
+
+    gatekeeper_start = time.perf_counter()
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_start",
+            agent_id="gatekeeper",
+            agent_name="Gatekeeper",
+            phase="gatekeeper",
+            status="running",
+        ),
+    )
+    gatekeeper_result = run_gatekeeper(legal_review)
+    gatekeeper_duration = time.perf_counter() - gatekeeper_start
+    await _emit_progress(
+        on_progress,
+        PipelineProgressEvent(
+            event="agent_complete",
+            agent_id="gatekeeper",
+            agent_name="Gatekeeper",
+            phase="gatekeeper",
+            status="success",
+            duration_seconds=round(gatekeeper_duration, 2),
+            output=_gatekeeper_output(gatekeeper_result),
+        ),
+    )
+    end_time = datetime.now()
+    report = generate_report(
+        screenplay_path=screenplay_path,
+        extracted_entities=extracted_entities,
+        entity_results=entity_results,
+        start_time=start_time,
+        end_time=end_time,
+        summary_result=summary_result,
+        legal_review=legal_review,
+        gatekeeper_result=gatekeeper_result,
+    )
+
+    return ClearancePipelineResult(
+        screenplay_path=screenplay_path,
+        screenplay_text=screenplay_text,
+        extracted_entities=extracted_entities,
+        grounded_entities=grounded_entities,
+        entity_results=entity_results,
+        summary_result=summary_result,
+        legal_review=legal_review,
+        gatekeeper_result=gatekeeper_result,
+        report=report,
+        start_time=start_time,
+        end_time=end_time,
+    )
 
 
 async def main_async(screenplay_path: str, output_file: Optional[str] = None) -> int:
@@ -975,76 +1509,26 @@ async def main_async(screenplay_path: str, output_file: Optional[str] = None) ->
     except Exception as e:
         print(f"ERROR: Failed to read screenplay file: {e}")
         return 1
-    
-    # Run extraction
-    try:
-        extracted_entities = await run_extraction(screenplay_text)
-    except Exception as e:
-        print(f"ERROR: Extraction failed: {e}")
-        return 1
-    
-    if extracted_entities.entity_count == 0:
-        print("No entities found in screenplay. Pipeline complete.")
-        end_time = datetime.now()
-        print(f"\nTotal time: {(end_time - start_time).total_seconds():.1f}s")
-        return 0
 
     try:
-        grounded_entities = await run_grounding_check(screenplay_text, extracted_entities)
-    except Exception as e:
-        print(f"ERROR: Grounding check failed: {e}")
-        return 1
-
-    if grounded_entities.entity_count == 0:
-        print("No grounded entities remain after grounding check. Pipeline complete.")
-        end_time = datetime.now()
-        print(f"\nTotal time: {(end_time - start_time).total_seconds():.1f}s")
-        return 0
-    
-    # Process grounded entities with specialists
-    try:
-        entity_results = await process_entities(grounded_entities)
-    except Exception as e:
-        print(f"ERROR: Specialist processing failed: {e}")
-        return 1
-
-    try:
-        entity_results = await run_risk_scoring(entity_results)
-    except Exception as e:
-        print(f"ERROR: Risk scoring failed: {e}")
-        return 1
-
-    try:
-        summary_result = await run_summary(
-            entity_results,
-            script_title=grounded_entities.script_title,
+        pipeline_result = await run_clearance_pipeline(
+            screenplay_text,
+            screenplay_path=screenplay_path,
         )
+    except RuntimeError as e:
+        print(f"Pipeline stopped: {e}")
+        return 0
     except Exception as e:
-        print(f"ERROR: Summary generation failed: {e}")
+        print(f"ERROR: Pipeline failed: {e}")
         return 1
 
-    legal_review = run_legal_review_setup(
-        entity_results,
-        run_id=grounded_entities.run_id,
-        script_id=grounded_entities.script_id,
-        script_title=grounded_entities.script_title,
-        summary_result=summary_result,
-    )
-
-    gatekeeper_result = run_gatekeeper(legal_review)
-    
-    # Generate report
-    end_time = datetime.now()
-    report = generate_report(
-        screenplay_path=screenplay_path,
-        extracted_entities=extracted_entities,
-        entity_results=entity_results,
-        start_time=start_time,
-        end_time=end_time,
-        summary_result=summary_result,
-        legal_review=legal_review,
-        gatekeeper_result=gatekeeper_result,
-    )
+    extracted_entities = pipeline_result.extracted_entities
+    entity_results = pipeline_result.entity_results
+    summary_result = pipeline_result.summary_result
+    legal_review = pipeline_result.legal_review
+    gatekeeper_result = pipeline_result.gatekeeper_result
+    report = pipeline_result.report
+    start_time = pipeline_result.start_time
     
     # Output results
     print("\n" + "="*80)
