@@ -4,7 +4,7 @@ Orchestrator - Main pipeline for script clearance system.
 
 This orchestrator runs the complete screenplay clearance workflow:
 1. Extraction Agent: Reads screenplay text and identifies entities
-2. Grounding Check Agent: Validates entities against the screenplay
+2. Grounding Check: Validates entities against the screenplay (deterministic)
 3. Routing: Sends grounded entities to appropriate specialist agents
 4. Specialist Processing: Each entity is researched by its specialist
 5. Risk Scoring Agent: Applies rubric to entity + research findings
@@ -57,11 +57,7 @@ from agents.character_name_specialist import (
     character_name_specialist,
 )
 from agents.extraction_agent import extractor
-from agents.grounding_check_agent import (
-    apply_grounding_filter,
-    build_grounding_prompt,
-    grounding_checker,
-)
+from gatekeeper.deterministic_grounding import ground_entities
 from agents.literary_reference_specialist import (
     STATE_RESEARCH_RESULT as LITERARY_STATE_RESULT,
     literary_reference_specialist,
@@ -442,9 +438,14 @@ async def run_grounding_check(
     user_id: str = "orchestrator",
     on_progress: ProgressCallback | None = None,
 ) -> Entities:
-    """Run grounding check agent and return filtered Entities."""
+    """Run deterministic grounding and return filtered Entities.
+
+    Uses Python string matching against the screenplay (no LLM). The legacy
+    LLM grounding agent remains available in agents/grounding_check_agent.py
+    but is not invoked on the live clearance path.
+    """
     print("\n" + "=" * 80)
-    print("STEP 2: GROUNDING CHECK AGENT")
+    print("STEP 2: GROUNDING CHECK (DETERMINISTIC)")
     print("=" * 80)
 
     start_time = time.perf_counter()
@@ -453,7 +454,7 @@ async def run_grounding_check(
         PipelineProgressEvent(
             event="agent_start",
             agent_id="grounding",
-            agent_name="Grounding Check Agent",
+            agent_name="Grounding Check",
             phase="grounding",
             status="running",
         ),
@@ -467,7 +468,7 @@ async def run_grounding_check(
             PipelineProgressEvent(
                 event="agent_complete",
                 agent_id="grounding",
-                agent_name="Grounding Check Agent",
+                agent_name="Grounding Check",
                 phase="grounding",
                 status="success",
                 duration_seconds=round(duration, 2),
@@ -480,55 +481,15 @@ async def run_grounding_check(
         )
         return entities
 
-    session_service = InMemorySessionService()
-    runner = Runner(
-        agent=grounding_checker,
-        app_name="orchestrator_grounding",
-        session_service=session_service,
-    )
-
-    await session_service.create_session(
-        app_name="orchestrator_grounding",
-        user_id=user_id,
-        session_id="grounding",
-    )
-
-    prompt = build_grounding_prompt(screenplay_text, entities)
-    final_text = None
-    async for event in runner.run_async(
-        user_id=user_id,
-        session_id="grounding",
-        new_message=types.Content(
-            role="user",
-            parts=[types.Part(text=prompt)],
-        ),
-    ):
-        if event.is_final_response() and event.content and event.content.parts:
-            final_text = event.content.parts[0].text
-
-    if not final_text:
-        raise RuntimeError("Grounding check agent returned no final response")
-
-    try:
-        parsed = json.loads(final_text)
-    except json.JSONDecodeError as e:
-        print(f"Error parsing grounding check output: {e}")
-        print(f"Raw output:\n{final_text}")
-        raise
-
-    parsed["run_id"] = entities.run_id
-    parsed["script_id"] = entities.script_id
-    parsed["script_title"] = entities.script_title
-    parsed["metadata"] = entities.metadata.model_dump(mode="json")
-
-    agent_output = Entities.model_validate(parsed)
-    filtered, grounded, rejected = apply_grounding_filter(entities, agent_output)
+    # Deterministic grounding (no LLM). Legacy agent:
+    # agents/grounding_check_agent.py
+    filtered, grounded, rejected = ground_entities(screenplay_text, entities)
 
     print("\nGrounding Check:")
     for entity in grounded:
-        print(f"  ✓ {entity.name} — grounded")
+        print(f"  [OK] {entity.name} — grounded")
     for entity in rejected:
-        print(f"  ✗ {entity.name} — not grounded")
+        print(f"  [X] {entity.name} — not grounded")
 
     print(
         f"\nGrounding summary: {entities.entity_count} extracted, "
@@ -541,7 +502,7 @@ async def run_grounding_check(
         PipelineProgressEvent(
             event="agent_complete",
             agent_id="grounding",
-            agent_name="Grounding Check Agent",
+            agent_name="Grounding Check",
             phase="grounding",
             status="success",
             duration_seconds=round(duration, 2),
