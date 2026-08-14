@@ -160,29 +160,86 @@
 
 .story-trail {
   position: absolute;
-  bottom: 34px;
+  bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
   display: flex;
-  gap: 14px;
-  background: rgba(0,0,0,0.3);
-  backdrop-filter: blur(12px);
-  padding: 10px 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(255,255,255,0.06);
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  padding: 14px 20px 12px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  /* Room for magnified icons to grow upward without clipping */
+  overflow: visible;
 }
 
 .trail-item {
-  width: 20px;
-  height: 20px;
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  width: 22px;
+  height: 36px;
   color: #D4A24C;
-  transition: opacity 0.05s linear;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  position: relative;
 }
 
-.trail-item svg {
+.trail-item-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+  transform-origin: bottom center;
+  transition: opacity 0.12s ease;
+  will-change: transform;
+}
+
+.trail-item:focus-visible {
+  outline: 2px solid rgba(212, 162, 76, 0.7);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+.trail-item.is-bouncing .trail-item-icon {
+  transition:
+    opacity 0.12s ease,
+    transform 280ms cubic-bezier(0.22, 1.4, 0.36, 1);
+}
+
+.trail-item-icon svg {
   width: 100%;
   height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+@media (hover: none) {
+  /* Touch devices: skip magnification feel; keep tap targets usable */
+  .trail-item {
+    width: 24px;
+    height: 32px;
+  }
+  .trail-item-icon {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trail-item-icon,
+  .trail-item.is-bouncing .trail-item-icon {
+    transition: opacity 0.12s ease;
+  }
 }
 
 @media (max-width: 600px) {
@@ -194,5 +251,9 @@
   }
   .story-content h1 {
     font-size: 38px;
+  }
+  .story-trail {
+    gap: 10px;
+    padding: 12px 14px 10px;
   }
 }
