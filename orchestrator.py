@@ -8,8 +8,9 @@ This orchestrator runs the complete screenplay clearance workflow:
 3. Routing: Sends grounded entities to appropriate specialist agents
 4. Specialist Processing: Each entity is researched by its specialist
 5. Risk Scoring Agent: Applies rubric to entity + research findings
-6. Results Collection: Compiles scored findings
-7. Output: Generates final clearance report
+6. Summary Agent: Produces plain-language clearance overview
+7. Results Collection: Compiles scored findings and summary
+8. Output: Generates final clearance report
 
 Usage:
     python orchestrator.py <screenplay_file.txt>
@@ -70,6 +71,12 @@ from agents.risk_scoring_agent import (
     finalize_risk_result,
     risk_scorer,
 )
+from agents.summary_agent import (
+    build_summary_prompt,
+    collect_risk_results,
+    finalize_summary_result,
+    summarizer,
+)
 
 from agents.trademark_brand_specialist import (
     STATE_RESEARCH_RESULT as TRADEMARK_STATE_RESULT,
@@ -79,6 +86,7 @@ from agents.trademark_brand_specialist import (
 from schemas.entities import Entities, Entity, EntityType, ScriptLocation
 from schemas.research_result import ResearchResult, ResearchStatus
 from schemas.risk_result import RiskLevel, RiskResult
+from schemas.summary_result import SummaryResult
 
 
 @dataclass
@@ -646,12 +654,82 @@ async def run_risk_scoring(
     return scored_results
 
 
+async def run_summary(
+    entity_results: Dict[EntityType, List[EntityResult]],
+    script_title: str | None = None,
+    user_id: str = "orchestrator",
+) -> SummaryResult:
+    """Run summary agent over completed risk-scoring results."""
+    print("\n" + "=" * 80)
+    print("STEP 5: SUMMARY AGENT")
+    print("=" * 80)
+
+    risk_results = collect_risk_results(entity_results)
+    if not risk_results:
+        empty = SummaryResult(
+            overall_summary="No entities were scored in this clearance run.",
+            total_entities=0,
+            clear_count=0,
+            caution_count=0,
+            high_risk_count=0,
+            priority_items=[],
+        )
+        print("\nNo risk results to summarise.")
+        return empty
+
+    session_service = InMemorySessionService()
+    runner = Runner(
+        agent=summarizer,
+        app_name="orchestrator_summary",
+        session_service=session_service,
+    )
+
+    await session_service.create_session(
+        app_name="orchestrator_summary",
+        user_id=user_id,
+        session_id="summary",
+    )
+
+    prompt = build_summary_prompt(risk_results, script_title=script_title)
+    final_text = None
+    async for event in runner.run_async(
+        user_id=user_id,
+        session_id="summary",
+        new_message=types.Content(
+            role="user",
+            parts=[types.Part(text=prompt)],
+        ),
+    ):
+        if event.is_final_response() and event.content and event.content.parts:
+            final_text = event.content.parts[0].text
+
+    if not final_text:
+        raise RuntimeError("Summary agent returned no final response")
+
+    parsed = json.loads(final_text)
+    agent_output = SummaryResult.model_validate(parsed)
+    summary = finalize_summary_result(risk_results, agent_output)
+
+    print(f"\nClearance summary ({summary.total_entities} entities):")
+    print(f"  Clear: {summary.clear_count}")
+    print(f"  Caution: {summary.caution_count}")
+    print(f"  High risk: {summary.high_risk_count}")
+    print(f"\n{summary.overall_summary[:300]}...")
+    if summary.priority_items:
+        print("\nPriority items:")
+        for item in summary.priority_items:
+            print(f"  • {item}")
+
+    return summary
+
+
 def generate_report(
     screenplay_path: str,
     extracted_entities: Entities,
     entity_results: Dict[EntityType, List[EntityResult]],
     start_time: datetime,
-    end_time: datetime
+    end_time: datetime,
+    summary_result: SummaryResult | None = None,
 ) -> Dict:
     """Generate a comprehensive clearance report."""
     
@@ -707,6 +785,7 @@ def generate_report(
         "entities_by_type": {},
         "high_risk_findings": [],
         "recommendations": [],
+        "summary": summary_result.model_dump(mode="json") if summary_result else None,
     }
     
     # Add detailed entity results by type
@@ -836,6 +915,15 @@ async def main_async(screenplay_path: str, output_file: Optional[str] = None) ->
     except Exception as e:
         print(f"ERROR: Risk scoring failed: {e}")
         return 1
+
+    try:
+        summary_result = await run_summary(
+            entity_results,
+            script_title=grounded_entities.script_title,
+        )
+    except Exception as e:
+        print(f"ERROR: Summary generation failed: {e}")
+        return 1
     
     # Generate report
     end_time = datetime.now()
@@ -844,7 +932,8 @@ async def main_async(screenplay_path: str, output_file: Optional[str] = None) ->
         extracted_entities=extracted_entities,
         entity_results=entity_results,
         start_time=start_time,
-        end_time=end_time
+        end_time=end_time,
+        summary_result=summary_result,
     )
     
     # Output results
@@ -862,6 +951,14 @@ async def main_async(screenplay_path: str, output_file: Optional[str] = None) ->
     print(f"  Caution: {stats['caution_entities']}")
     print(f"  High risk: {stats['high_risk_entities']}")
     print(f"  Total time: {report['metadata']['duration_seconds']:.1f}s")
+
+    if summary_result:
+        print(f"\nClearance Overview:")
+        print(f"  {summary_result.overall_summary}")
+        if summary_result.priority_items:
+            print(f"\nPriority items ({len(summary_result.priority_items)}):")
+            for item in summary_result.priority_items:
+                print(f"  • {item}")
     
     print(f"\nHigh-risk findings ({len(report['high_risk_findings'])}):")
     for finding in report["high_risk_findings"]:
