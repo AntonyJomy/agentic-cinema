@@ -1,10 +1,18 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import './ScrollStory.css';
 
 const TOTAL_FRAMES = 240;
 const frameUrl = (n) => `/frames/ezgif-frame-${String(n).padStart(3, '0')}.jpg`;
 const VH_PER_STAGE = 120;
+
+/** Dock magnification: max scale and influence radius in px. */
+const DOCK_MAX_SCALE = 1.5;
+const DOCK_INFLUENCE = 88;
+const DOCK_LIFT_PX = 12;
+/** How quickly smooth values chase the cursor (0–1 per frame @60fps). */
+const DOCK_MOUSE_LERP = 0.18;
+const DOCK_SCALE_LERP = 0.22;
 
 const FEATURES = [
   {
@@ -71,12 +79,39 @@ const STAGES = [
 // Must match the opacity transition duration in ScrollStory.css (.story-content)
 const FADE_MS = 260;
 
+function dockScaleForDistance(distancePx) {
+  if (distancePx >= DOCK_INFLUENCE) return 1;
+  const t = 1 - distancePx / DOCK_INFLUENCE;
+  // Cosine falloff — smooth neighbor magnification like macOS Dock
+  const eased = 0.5 - 0.5 * Math.cos(Math.PI * t);
+  return 1 + (DOCK_MAX_SCALE - 1) * eased;
+}
+
+function prefersReducedMotion() {
+  return (
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+function lerp(from, to, amount) {
+  return from + (to - from) * amount;
+}
+
 export default function ScrollStory() {
   const wrapperRef = useRef(null);
   const imgRef = useRef(null);
+  const itemRefs = useRef([]);
+  const iconRefs = useRef([]);
+  const dockRafRef = useRef(null);
+  const dockTargetXRef = useRef(null);
+  const dockSmoothXRef = useRef(null);
+  const dockScalesRef = useRef(FEATURES.map(() => 1));
+  const bounceIndexRef = useRef(null);
   const [displayIndex, setDisplayIndex] = useState(0);
   const [visible, setVisible] = useState(true);
   const [trail, setTrail] = useState(new Array(FEATURES.length).fill(0));
+  const [bounceIndex, setBounceIndex] = useState(null);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -140,6 +175,120 @@ export default function ScrollStory() {
     };
   }, []);
 
+  const applyDockTransforms = useCallback(() => {
+    const reduceMotion = prefersReducedMotion();
+    FEATURES.forEach((_, i) => {
+      const icon = iconRefs.current[i];
+      if (!icon) return;
+      const scale = reduceMotion ? 1 : dockScalesRef.current[i];
+      const lift = (scale - 1) * (DOCK_LIFT_PX / (DOCK_MAX_SCALE - 1));
+      const bouncing = !reduceMotion && bounceIndexRef.current === i;
+      icon.style.transform = bouncing
+        ? `translateY(-${lift + 12}px) scale(${Math.max(scale, 1.32)})`
+        : `translateY(-${lift}px) scale(${scale})`;
+      icon.style.zIndex = String(Math.round(scale * 10));
+    });
+  }, []);
+
+  const stopDockAnimation = useCallback(() => {
+    if (dockRafRef.current != null) {
+      cancelAnimationFrame(dockRafRef.current);
+      dockRafRef.current = null;
+    }
+  }, []);
+
+  const tickDock = useCallback(() => {
+    const targetX = dockTargetXRef.current;
+    let smoothX = dockSmoothXRef.current;
+
+    if (targetX == null) {
+      // Ease back to resting scales, then stop the loop.
+      let stillMoving = false;
+      dockScalesRef.current = dockScalesRef.current.map((scale) => {
+        const next = lerp(scale, 1, DOCK_SCALE_LERP);
+        if (Math.abs(next - 1) > 0.002) stillMoving = true;
+        return next;
+      });
+      dockSmoothXRef.current = null;
+      applyDockTransforms();
+      if (stillMoving || bounceIndexRef.current != null) {
+        dockRafRef.current = requestAnimationFrame(tickDock);
+      } else {
+        dockRafRef.current = null;
+      }
+      return;
+    }
+
+    if (smoothX == null) {
+      smoothX = targetX;
+    } else {
+      smoothX = lerp(smoothX, targetX, DOCK_MOUSE_LERP);
+    }
+    dockSmoothXRef.current = smoothX;
+
+    dockScalesRef.current = FEATURES.map((_, i) => {
+      const el = itemRefs.current[i];
+      let targetScale = 1;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const center = rect.left + rect.width / 2;
+        targetScale = dockScaleForDistance(Math.abs(smoothX - center));
+      }
+      return lerp(dockScalesRef.current[i], targetScale, DOCK_SCALE_LERP);
+    });
+
+    applyDockTransforms();
+    dockRafRef.current = requestAnimationFrame(tickDock);
+  }, [applyDockTransforms]);
+
+  const ensureDockAnimation = useCallback(() => {
+    if (dockRafRef.current == null && !prefersReducedMotion()) {
+      dockRafRef.current = requestAnimationFrame(tickDock);
+    }
+  }, [tickDock]);
+
+  useEffect(() => () => stopDockAnimation(), [stopDockAnimation]);
+
+  const handleDockMove = useCallback(
+    (event) => {
+      if (prefersReducedMotion()) return;
+      dockTargetXRef.current = event.clientX;
+      ensureDockAnimation();
+    },
+    [ensureDockAnimation]
+  );
+
+  const handleDockLeave = useCallback(() => {
+    dockTargetXRef.current = null;
+    ensureDockAnimation();
+  }, [ensureDockAnimation]);
+
+  const scrollToFeature = useCallback(
+    (featureIndex) => {
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return;
+
+      bounceIndexRef.current = featureIndex;
+      setBounceIndex(featureIndex);
+      applyDockTransforms();
+      ensureDockAnimation();
+      window.setTimeout(() => {
+        bounceIndexRef.current = null;
+        setBounceIndex(null);
+        applyDockTransforms();
+      }, 480);
+
+      // Feature i lives at stage i + 1 (stage 0 is intro)
+      const stageIndex = featureIndex + 1;
+      const total = wrapper.offsetHeight - window.innerHeight;
+      if (total <= 0) return;
+      const targetProgress = (stageIndex + 0.35) / STAGES.length;
+      const top = wrapper.offsetTop + targetProgress * total;
+      window.scrollTo({ top, behavior: 'smooth' });
+    },
+    [applyDockTransforms, ensureDockAnimation]
+  );
+
   const stage = STAGES[displayIndex];
   const wrapperHeight = `${STAGES.length * VH_PER_STAGE}vh`;
 
@@ -199,17 +348,37 @@ export default function ScrollStory() {
           )}
         </div>
 
-        <div className="story-trail">
+        <div
+          className="story-trail"
+          onMouseMove={handleDockMove}
+          onMouseLeave={handleDockLeave}
+          role="navigation"
+          aria-label="Feature highlights"
+        >
           {FEATURES.map((f, i) => (
-            <div
+            <button
               key={f.title}
-              className="trail-item"
-              style={{ opacity: 0.35 + trail[i] * 0.65 }}
+              type="button"
+              className={'trail-item' + (bounceIndex === i ? ' is-bouncing' : '')}
+              ref={(node) => {
+                itemRefs.current[i] = node;
+              }}
+              title={f.title}
+              aria-label={`Go to ${f.title}`}
+              onClick={() => scrollToFeature(i)}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                {f.icon}
-              </svg>
-            </div>
+              <span
+                className="trail-item-icon"
+                ref={(node) => {
+                  iconRefs.current[i] = node;
+                }}
+                style={{ opacity: 0.35 + trail[i] * 0.65 }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  {f.icon}
+                </svg>
+              </span>
+            </button>
           ))}
         </div>
       </section>
