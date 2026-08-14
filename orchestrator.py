@@ -9,8 +9,10 @@ This orchestrator runs the complete screenplay clearance workflow:
 4. Specialist Processing: Each entity is researched by its specialist
 5. Risk Scoring Agent: Applies rubric to entity + research findings
 6. Summary Agent: Produces plain-language clearance overview
-7. Results Collection: Compiles scored findings and summary
-8. Output: Generates final clearance report
+7. Legal Review: Presents findings for explicit human decisions
+8. Results Collection: Compiles scored findings, summary, and review package
+9. Gatekeeper: Enforces clearance policy before final report
+10. Output: Generates final clearance report (only if gatekeeper clears)
 
 Usage:
     python orchestrator.py <screenplay_file.txt>
@@ -87,6 +89,13 @@ from schemas.entities import Entities, Entity, EntityType, ScriptLocation
 from schemas.research_result import ResearchResult, ResearchStatus
 from schemas.risk_result import RiskLevel, RiskResult
 from schemas.summary_result import SummaryResult
+from schemas.legal_review import LegalReviewPackage
+from schemas.gatekeeper_result import GatekeeperResult, GatekeeperStatus
+from legal_review.review_workflow import (
+    build_legal_review_package,
+    get_pending_required_reviews,
+)
+from gatekeeper.clearance_gate import evaluate_clearance
 
 
 @dataclass
@@ -723,6 +732,75 @@ async def run_summary(
     return summary
 
 
+def run_legal_review_setup(
+    entity_results: Dict[EntityType, List[EntityResult]],
+    *,
+    run_id: str,
+    script_id: str,
+    script_title: str | None = None,
+    summary_result: SummaryResult | None = None,
+) -> LegalReviewPackage:
+    """
+    Prepare the clearance run for human legal review.
+
+    All entities default to NEEDS_REVIEW. No approvals are inferred.
+    """
+    print("\n" + "=" * 80)
+    print("STEP 6: LEGAL REVIEW (HUMAN DECISION REQUIRED)")
+    print("=" * 80)
+
+    package = build_legal_review_package(
+        entity_results,
+        run_id=run_id,
+        script_id=script_id,
+        script_title=script_title,
+        summary_result=summary_result,
+    )
+
+    pending_required = get_pending_required_reviews(package)
+    print(f"\nEntities awaiting legal review: {package.pending_review_count}")
+    print(f"High-risk / human-review items requiring explicit decision: {len(pending_required)}")
+
+    for record in pending_required:
+        print(
+            f"  • {record.entity_name} — AI risk: {record.ai_risk_level.value} "
+            f"(decision: {record.decision.value})"
+        )
+
+    if pending_required:
+        print(
+            "\n⚠️  No approvals inferred. A human reviewer must explicitly "
+            "record APPROVED, BLOCKED, or leave as NEEDS_REVIEW."
+        )
+    else:
+        print("\nNo high-risk or human-review entities require explicit decisions.")
+
+    return package
+
+
+def run_gatekeeper(legal_review: LegalReviewPackage) -> GatekeeperResult:
+    """Evaluate clearance policy and determine if the run may proceed."""
+    print("\n" + "=" * 80)
+    print("STEP 7: GATEKEEPER")
+    print("=" * 80)
+
+    result = evaluate_clearance(legal_review)
+
+    print(f"\nGatekeeper decision: {result.status.value}")
+    print(f"Reason: {result.reason.value}")
+    print(f"Message: {result.message}")
+
+    if result.blocking_entity_ids:
+        print(f"Blocking entities: {', '.join(result.blocking_entity_ids)}")
+
+    if result.cleared_for_export:
+        print("\n✓ Cleared for final report/export")
+    else:
+        print("\n✗ BLOCKED — final report must not be presented as approved/cleared")
+
+    return result
+
+
 def generate_report(
     screenplay_path: str,
     extracted_entities: Entities,
@@ -730,6 +808,8 @@ def generate_report(
     start_time: datetime,
     end_time: datetime,
     summary_result: SummaryResult | None = None,
+    legal_review: LegalReviewPackage | None = None,
+    gatekeeper_result: GatekeeperResult | None = None,
 ) -> Dict:
     """Generate a comprehensive clearance report."""
     
@@ -772,6 +852,12 @@ def generate_report(
             "end_time": end_time.isoformat(),
             "duration_seconds": (end_time - start_time).total_seconds(),
             "model_used": "gemini-3.6-flash",
+            "cleared_for_export": (
+                gatekeeper_result.cleared_for_export if gatekeeper_result else False
+            ),
+            "clearance_status": (
+                gatekeeper_result.status.value if gatekeeper_result else "blocked"
+            ),
         },
         "statistics": {
             "total_entities_extracted": total_entities,
@@ -786,6 +872,8 @@ def generate_report(
         "high_risk_findings": [],
         "recommendations": [],
         "summary": summary_result.model_dump(mode="json") if summary_result else None,
+        "legal_review": legal_review.model_dump(mode="json") if legal_review else None,
+        "gatekeeper": gatekeeper_result.model_dump(mode="json") if gatekeeper_result else None,
     }
     
     # Add detailed entity results by type
@@ -848,6 +936,16 @@ def generate_report(
     if not high_risk_entities and not caution_entities:
         report["recommendations"].append(
             "No significant risks identified. Script appears to be legally clear."
+        )
+
+    if gatekeeper_result and gatekeeper_result.status == GatekeeperStatus.BLOCKED:
+        report["recommendations"].insert(
+            0,
+            f"GATEKEEPER BLOCKED: {gatekeeper_result.message}",
+        )
+    elif gatekeeper_result and gatekeeper_result.cleared_for_export:
+        report["recommendations"].append(
+            "Gatekeeper cleared this run for final report/export."
         )
     
     return report
@@ -924,6 +1022,16 @@ async def main_async(screenplay_path: str, output_file: Optional[str] = None) ->
     except Exception as e:
         print(f"ERROR: Summary generation failed: {e}")
         return 1
+
+    legal_review = run_legal_review_setup(
+        entity_results,
+        run_id=grounded_entities.run_id,
+        script_id=grounded_entities.script_id,
+        script_title=grounded_entities.script_title,
+        summary_result=summary_result,
+    )
+
+    gatekeeper_result = run_gatekeeper(legal_review)
     
     # Generate report
     end_time = datetime.now()
@@ -934,11 +1042,16 @@ async def main_async(screenplay_path: str, output_file: Optional[str] = None) ->
         start_time=start_time,
         end_time=end_time,
         summary_result=summary_result,
+        legal_review=legal_review,
+        gatekeeper_result=gatekeeper_result,
     )
     
     # Output results
     print("\n" + "="*80)
-    print("FINAL REPORT")
+    if gatekeeper_result.cleared_for_export:
+        print("FINAL REPORT — CLEARED FOR EXPORT")
+    else:
+        print("FINAL REPORT — BLOCKED (NOT CLEARED FOR EXPORT)")
     print("="*80)
     
     stats = report["statistics"]
@@ -959,6 +1072,20 @@ async def main_async(screenplay_path: str, output_file: Optional[str] = None) ->
             print(f"\nPriority items ({len(summary_result.priority_items)}):")
             for item in summary_result.priority_items:
                 print(f"  • {item}")
+
+    if legal_review:
+        pending = legal_review.unresolved_required_count
+        print(f"\nLegal Review Status:")
+        print(f"  Overall decision: {legal_review.overall_decision.value}")
+        print(f"  Unresolved required reviews: {pending}")
+        if pending:
+            print("  ⚠️  Human legal review required before run approval")
+
+    if gatekeeper_result:
+        print(f"\nGatekeeper:")
+        print(f"  Status: {gatekeeper_result.status.value}")
+        print(f"  Reason: {gatekeeper_result.reason.value}")
+        print(f"  Cleared for export: {gatekeeper_result.cleared_for_export}")
     
     print(f"\nHigh-risk findings ({len(report['high_risk_findings'])}):")
     for finding in report["high_risk_findings"]:
@@ -987,10 +1114,13 @@ async def main_async(screenplay_path: str, output_file: Optional[str] = None) ->
         print(f"\nFull report saved to: {default_output}")
     
     print("\n" + "="*80)
-    print("PIPELINE COMPLETE")
+    if gatekeeper_result.cleared_for_export:
+        print("PIPELINE COMPLETE — CLEARED FOR EXPORT")
+    else:
+        print("PIPELINE BLOCKED — FINDINGS RETAINED FOR LEGAL REVIEW")
     print("="*80)
     
-    return 0
+    return 0 if gatekeeper_result.cleared_for_export else 2
 
 
 def main():
