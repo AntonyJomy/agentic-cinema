@@ -77,6 +77,45 @@ export async function runClearance({ script, scriptTitle }) {
 }
 
 /**
+ * Extract screenplay text from an uploaded .txt or .pdf file.
+ * @param {{ file: File, scriptTitle?: string }} params
+ */
+export async function extractScriptFile({ file, scriptTitle }) {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (scriptTitle?.trim()) {
+    formData.append('script_title', scriptTitle.trim());
+  }
+
+  let response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}/extract-script`, {
+      method: 'POST',
+      body: formData,
+    });
+  } catch (error) {
+    throw new Error(networkErrorMessage(error));
+  }
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const message =
+      payload?.detail != null
+        ? formatErrorDetail(payload.detail)
+        : `Could not extract text from file (${response.status})`;
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
+/**
  * Run clearance with live agent progress streamed as NDJSON.
  * @param {{ script: string, scriptTitle?: string, onProgress?: (event: object) => void, signal?: AbortSignal }} params
  */

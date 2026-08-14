@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -27,8 +27,13 @@ load_dotenv(project_root / ".env")
 if os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
+from api.pdf_text import PdfExtractionError, extract_text_from_pdf  # noqa: E402
 from api.response_builder import build_clearance_response  # noqa: E402
-from api.schemas import ClearanceRequest, ClearanceResponse  # noqa: E402
+from api.schemas import (  # noqa: E402
+    ClearanceRequest,
+    ClearanceResponse,
+    ExtractScriptResponse,
+)
 from orchestrator import run_clearance_pipeline  # noqa: E402
 
 logger = logging.getLogger("agentic_cinema.api")
@@ -74,6 +79,52 @@ def _validate_clearance_request(request: ClearanceRequest) -> str:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/extract-script", response_model=ExtractScriptResponse)
+async def extract_script(
+    file: UploadFile = File(...),
+    script_title: str | None = Form(default=None),
+) -> ExtractScriptResponse:
+    """Extract plain text from an uploaded .txt or .pdf screenplay."""
+    filename = (file.filename or "upload").strip()
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".txt", ".pdf"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Upload a .txt or .pdf screenplay.",
+        )
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    page_count: int | None = None
+    if suffix == ".pdf":
+        try:
+            script, page_count = extract_text_from_pdf(raw)
+        except PdfExtractionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    else:
+        try:
+            script = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not decode .txt file as UTF-8",
+            ) from exc
+
+    script = script.strip()
+    if not script:
+        raise HTTPException(status_code=400, detail="No screenplay text found in file")
+
+    title = (script_title or "").strip() or None
+    return ExtractScriptResponse(
+        script=script,
+        filename=filename,
+        page_count=page_count,
+        script_title=title,
+    )
 
 
 @app.post("/clearance", response_model=ClearanceResponse)
