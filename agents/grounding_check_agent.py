@@ -1,12 +1,15 @@
 """
 agents/grounding_check_agent.py
 
-The Grounding Check Agent validates that every entity extracted from a
-screenplay is actually supported by the original screenplay text.
+LEGACY LLM grounding agent (kept for reference / optional experiments).
 
-It reads an `Entities` object plus the screenplay and returns a filtered
-`Entities` object containing only grounded entities. It does NOT perform
-web research, legal risk assessment, or Parallel lookups.
+The live clearance pipeline uses deterministic Python grounding instead:
+  gatekeeper/deterministic_grounding.py
+  wired via orchestrator.run_grounding_check()
+
+This module still validates that every entity extracted from a
+screenplay is actually supported by the original screenplay text when
+invoked directly as an LlmAgent.
 """
 import json
 import os

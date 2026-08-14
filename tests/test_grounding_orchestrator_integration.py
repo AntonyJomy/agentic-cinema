@@ -109,7 +109,14 @@ def build_test_entities() -> Entities:
     )
 
 
-async def mock_process_entity(entity, specialist_config, user_id, entity_index, total_entities):
+async def mock_process_entity(
+    entity,
+    specialist_config,
+    user_id,
+    entity_index,
+    total_entities,
+    on_progress=None,
+):
     """Record specialist calls without invoking Parallel MCP."""
     return EntityResult(
         entity=entity,
@@ -121,10 +128,6 @@ async def mock_process_entity(entity, specialist_config, user_id, entity_index, 
 
 
 async def test_grounding_orchestrator_integration() -> bool:
-    if not os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-        print("ERROR: GOOGLE_API_KEY or GEMINI_API_KEY required")
-        return False
-
     extracted = build_test_entities()
     print(f"Extracted entities: {extracted.entity_count}")
 
@@ -143,10 +146,22 @@ async def test_grounding_orchestrator_integration() -> bool:
 
     processed_names: list[str] = []
 
-    async def tracking_process_entity(entity, specialist_config, user_id, entity_index, total_entities):
+    async def tracking_process_entity(
+        entity,
+        specialist_config,
+        user_id,
+        entity_index,
+        total_entities,
+        on_progress=None,
+    ):
         processed_names.append(entity.name)
         return await mock_process_entity(
-            entity, specialist_config, user_id, entity_index, total_entities
+            entity,
+            specialist_config,
+            user_id,
+            entity_index,
+            total_entities,
+            on_progress=on_progress,
         )
 
     with patch("orchestrator.process_entity", side_effect=tracking_process_entity):
