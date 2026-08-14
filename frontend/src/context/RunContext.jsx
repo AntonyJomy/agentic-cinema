@@ -21,6 +21,7 @@ export function RunProvider({ children }) {
     setError(null);
     setPipelineEvents([]);
     setPipelineDuration(null);
+    setLastResponse(null);
     setPendingScript({
       scriptTitle: scriptTitle.trim(),
       scriptText: scriptText.trim(),
