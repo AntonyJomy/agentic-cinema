@@ -6,3 +6,5 @@ firebase-admin>=6.5.0
 # google-adk[mcp] pulls the official `mcp` client library required by McpToolset.
 # Docs: https://google.github.io/adk-docs/tools-custom/mcp-tools/
 google-adk[mcp]>=1.0.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
