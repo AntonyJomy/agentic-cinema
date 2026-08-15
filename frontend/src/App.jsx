@@ -2,6 +2,7 @@ import { Routes, Route, Outlet, Navigate, useLocation } from 'react-router-dom';
 import ScrollStory from './ScrollStory';
 import Features from './Features';
 import AppHeader from './components/AppHeader';
+import DustField from './components/DustField';
 import { RunProvider } from './context/RunContext';
 import { useRun } from './context/useRun';
 import { STEPS, getMaxStepIndex } from './context/steps';
@@ -36,6 +37,7 @@ function AppLayout() {
 
   return (
     <div className="app-shell">
+      <DustField />
       <AppHeader />
       <Outlet />
     </div>
