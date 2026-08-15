@@ -12,6 +12,18 @@ function fileExtension(name = '') {
   return idx >= 0 ? name.slice(idx).toLowerCase() : '';
 }
 
+function ReelIcon() {
+  return (
+    <svg className="reel-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="24" cy="24" r="19" />
+      <circle cx="24" cy="24" r="3.4" fill="currentColor" stroke="none" />
+      <circle cx="24" cy="11.5" r="4.2" />
+      <circle cx="34.3" cy="30.2" r="4.2" />
+      <circle cx="13.7" cy="30.2" r="4.2" />
+    </svg>
+  );
+}
+
 export default function UploadPage() {
   const navigate = useNavigate();
   const { prepareRun, isLoading, error, clearError } = useRun();
@@ -120,7 +132,12 @@ export default function UploadPage() {
         </label>
 
         <div
-          className={'dropzone' + (isDragging ? ' is-dragging' : '')}
+          className={
+            'dropzone' +
+            (isDragging ? ' is-dragging' : '') +
+            (isExtracting ? ' is-extracting' : '') +
+            (fileName && !isExtracting ? ' has-reel' : '')
+          }
           onClick={() => {
             if (!busy) fileInputRef.current?.click();
           }}
@@ -143,9 +160,10 @@ export default function UploadPage() {
             disabled={busy}
             onChange={(e) => handleFiles(e.target.files)}
           />
+          <ReelIcon />
           {isExtracting ? (
             <>
-              <span className="dropzone-title">Extracting text…</span>
+              <span className="dropzone-title">Loading reel into the projector…</span>
               <span className="dropzone-hint">Reading {fileName || 'file'}</span>
             </>
           ) : fileName ? (
@@ -155,7 +173,7 @@ export default function UploadPage() {
             </>
           ) : (
             <>
-              <span className="dropzone-title">Drag &amp; drop your script here</span>
+              <span className="dropzone-title">Drag &amp; drop your reel here</span>
               <span className="dropzone-hint">PDF or TXT screenplay — or paste below</span>
             </>
           )}
