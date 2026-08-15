@@ -1,3 +1,36 @@
+/* Film-verdict title card, framing the run's overall_status in cinema terms. */
+.verdict-slate {
+  display: inline-block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 18px;
+  border-radius: 6px;
+  margin-bottom: 24px;
+  border: 1.5px solid;
+}
+
+.verdict-slate--approved {
+  color: #6FCF97;
+  border-color: rgba(111, 207, 151, 0.5);
+  background: rgba(111, 207, 151, 0.08);
+}
+
+.verdict-slate--rejected {
+  color: #E2725B;
+  border-color: rgba(226, 114, 91, 0.5);
+  background: rgba(226, 114, 91, 0.08);
+}
+
+.verdict-slate--pending,
+.verdict-slate--flagged {
+  color: #D4A24C;
+  border-color: rgba(212, 162, 76, 0.5);
+  background: rgba(212, 162, 76, 0.08);
+}
+
 .report-counts {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -6,8 +39,10 @@
 }
 
 .report-count-tile {
-  background: #131315;
-  border: 1px solid #1E1F22;
+  background: rgba(19, 19, 21, 0.82);
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 12px;
   padding: 18px 16px;
   display: flex;
@@ -29,37 +64,80 @@
   color: #6B6963;
 }
 
-.report-detail dl {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
+/* End-credits crawl: role · dotted leader · name, rising in one by one. */
+.credits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   margin: 0;
 }
 
-.report-detail dt {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: #6B6963;
-  margin-bottom: 4px;
+.credits-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: credits-rise 0.5s ease forwards;
 }
 
-.report-detail dd {
+.credits-row:nth-child(1) { animation-delay: 0.05s; }
+.credits-row:nth-child(2) { animation-delay: 0.15s; }
+.credits-row:nth-child(3) { animation-delay: 0.25s; }
+.credits-row:nth-child(4) { animation-delay: 0.35s; }
+
+@keyframes credits-rise {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.credits-row dt {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #D4A24C;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.credits-leader {
+  flex: 1;
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.18);
+  margin-bottom: 3px;
+  min-width: 20px;
+}
+
+.credits-row dd {
   font-family: 'Inter', sans-serif;
   font-size: 14px;
   color: #F2F0EA;
   margin: 0;
+  white-space: nowrap;
 }
 
 .report-download {
   margin-top: 24px;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .credits-row {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (max-width: 560px) {
   .report-counts {
     grid-template-columns: repeat(2, 1fr);
   }
-  .report-detail dl {
-    grid-template-columns: 1fr;
+  .credits-row {
+    flex-wrap: wrap;
+  }
+  .credits-row dd {
+    white-space: normal;
   }
 }

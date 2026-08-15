@@ -1,3 +1,10 @@
+/* .filmstrip-frame draws the sprocket-hole strips flush against the top/bottom
+   edges, so the outer panel only needs vertical breathing room for them —
+   the inner .agent-feed keeps the real padding + its own scroll region. */
+.panel.agent-feed-outer {
+  padding: 7px 0;
+}
+
 .agent-feed {
   display: flex;
   flex-direction: column;
@@ -30,8 +37,35 @@
 }
 
 .agent-row {
+  position: relative;
+  overflow: hidden;
   border-bottom: 1px solid #1E1F22;
   padding: 14px 0;
+}
+
+/* Projector-beam scan sweeping across the row currently being worked on. */
+.agent-row--active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -35%;
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(212, 162, 76, 0.16), transparent);
+  animation: beam-sweep 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes beam-sweep {
+  0% { left: -35%; }
+  100% { left: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-row--active::after {
+    animation: none;
+    display: none;
+  }
 }
 
 .agent-row:last-child {

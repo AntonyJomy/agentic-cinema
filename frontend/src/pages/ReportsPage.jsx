@@ -2,6 +2,13 @@ import { useRun } from '../context/useRun';
 import '../styles/shared.css';
 import './ReportsPage.css';
 
+const VERDICT_COPY = {
+  approved: 'Final cut — approved',
+  rejected: 'Cut — rejected',
+  pending: 'Rough cut — pending review',
+  flagged: 'Rough cut — pending review',
+};
+
 function formatDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString();
@@ -37,6 +44,10 @@ export default function ReportsPage() {
         insurers or legal teams.
       </p>
 
+      <span className={`verdict-slate verdict-slate--${run.overall_status}`}>
+        {VERDICT_COPY[run.overall_status] ?? VERDICT_COPY.pending}
+      </span>
+
       <div className="run-header panel">
         <div>
           <h2 className="run-header-title">{run.script_title}</h2>
@@ -66,22 +77,26 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="panel report-detail">
-        <dl>
-          <div>
+      <div className="panel filmstrip-frame report-detail">
+        <dl className="credits-list">
+          <div className="credits-row">
             <dt>Reviewed by</dt>
+            <span className="credits-leader" aria-hidden="true" />
             <dd>{run.reviewed_by ?? 'Not yet reviewed'}</dd>
           </div>
-          <div>
+          <div className="credits-row">
             <dt>Reviewed at</dt>
+            <span className="credits-leader" aria-hidden="true" />
             <dd>{formatDate(run.reviewed_at)}</dd>
           </div>
-          <div>
+          <div className="credits-row">
             <dt>Created</dt>
+            <span className="credits-leader" aria-hidden="true" />
             <dd>{formatDate(run.created_at)}</dd>
           </div>
-          <div>
+          <div className="credits-row">
             <dt>Extraction model</dt>
+            <span className="credits-leader" aria-hidden="true" />
             <dd>{run.metadata.model_used}</dd>
           </div>
         </dl>

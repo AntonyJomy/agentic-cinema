@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useRun } from '../context/useRun';
 import { STEPS, getMaxStepIndex } from '../context/steps';
 import './ProjectorProgress.css';
@@ -60,22 +60,14 @@ export default function ProjectorProgress() {
             </span>
           );
 
-          return unlocked ? (
-            <NavLink
-              key={step.path}
-              to={step.path}
-              className={className}
-              style={{ left: `${leftPercent}%` }}
-            >
-              {node}
-              <span className="projector-label">{step.label}</span>
-            </NavLink>
-          ) : (
+          // Pure progress indicator — navigation happens via the CTA button
+          // on each page, not by clicking ahead here.
+          return (
             <span
               key={step.path}
               className={className}
               style={{ left: `${leftPercent}%` }}
-              title="Complete the previous step first"
+              title={unlocked ? undefined : 'Complete the previous step first'}
             >
               {node}
               <span className="projector-label">{step.label}</span>

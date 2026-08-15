@@ -1,0 +1,47 @@
+/* Fixed to the viewport (not .app-shell's full scroll height) so motes stay
+   visible near the user regardless of scroll position or page length.
+   z-index:-1 relies on .app-shell's `isolation: isolate` to stay scoped
+   locally — painted above its background, below all real content. */
+.dust-field {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dust-mote {
+  position: absolute;
+  top: 100%;
+  border-radius: 50%;
+  background: #D4A24C;
+  box-shadow: 0 0 4px 1px rgba(212, 162, 76, 0.5);
+  filter: blur(0.5px);
+  opacity: 0;
+  animation-name: dust-drift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes dust-drift {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.55;
+  }
+  90% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: translate(var(--drift, 20px), -115vh);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dust-field {
+    display: none;
+  }
+}

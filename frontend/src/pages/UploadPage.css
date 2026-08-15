@@ -54,7 +54,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 10px;
   text-align: center;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
@@ -64,6 +64,37 @@
 .dropzone.is-dragging {
   border-color: rgba(212, 162, 76, 0.5);
   background: rgba(212, 162, 76, 0.04);
+}
+
+.reel-icon {
+  width: 40px;
+  height: 40px;
+  color: #4A4A4D;
+  transition: color 0.2s ease;
+  animation: reel-spin 9s linear infinite;
+}
+
+.dropzone:hover .reel-icon,
+.dropzone.is-dragging .reel-icon,
+.dropzone.has-reel .reel-icon {
+  color: #D4A24C;
+  animation-duration: 4.5s;
+}
+
+.dropzone.is-extracting .reel-icon {
+  color: #D4A24C;
+  filter: drop-shadow(0 0 8px rgba(212, 162, 76, 0.55));
+  animation-duration: 1.1s;
+}
+
+@keyframes reel-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reel-icon {
+    animation: none;
+  }
 }
 
 .dropzone-title,
