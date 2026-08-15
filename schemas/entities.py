@@ -198,6 +198,24 @@ class Entity(BaseModel):
 
     )
 
+    # PRECISION FIELDS for better filtering and prioritization
+    depiction_context: str | None = Field(
+        None,
+        description=(
+            "How the entity is portrayed in the script - neutral, positive, negative, or suspicious. "
+            "Examples: 'named positively as a hero', 'mentioned in a criminal context', "
+            "'showing as logo on screen', 'referenced negatively'. This helps prioritize risks."
+        ),
+    )
+    ambiguity_reason: str | None = Field(
+        None,
+        description=(
+            "Why the agent is uncertain about this entity. If present with low confidence (<0.7), "
+            "this item can be shown separately from firm flags. Examples: "
+            "'could be fictional or real common name', 'unclear if this is a brand or generic term'."
+        ),
+    )
+
     # --- Model validator: runs AFTER all fields are set, every single time,
 
     # regardless of whether a value was explicitly passed in or left as a
