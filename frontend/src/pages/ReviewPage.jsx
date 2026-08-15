@@ -1,5 +1,7 @@
+import { useNavigate } from 'react-router-dom';
 import { useRun } from '../context/useRun';
 import EntityCard from '../components/EntityCard';
+import { allEntitiesReviewed } from '../context/steps';
 import '../styles/shared.css';
 import './ReviewPage.css';
 
@@ -7,10 +9,14 @@ const REVIEWER_NAME = 'Ben Okafor (Legal)';
 
 export default function ReviewPage() {
   const { run, updateEntityStatus, setOverallStatus } = useRun();
+  const navigate = useNavigate();
 
   const highRisk = run.entities.filter((e) => e.requires_human_review);
   const highRiskResolved = highRisk.filter((e) => e.status !== 'flagged');
   const gateClear = highRisk.length === 0 || highRiskResolved.length === highRisk.length;
+
+  const reviewedCount = run.entities.filter((e) => e.status !== 'flagged').length;
+  const allReviewed = allEntitiesReviewed(run);
 
   return (
     <div className="app-page">
@@ -43,32 +49,38 @@ export default function ReviewPage() {
       </div>
 
       {run.entities.map((entity) => (
-        <EntityCard
-          key={entity.entity_id}
-          entity={entity}
-          actions={
-            <>
-              <button
-                className="btn-ghost btn-small btn-success"
-                onClick={() => updateEntityStatus(entity.entity_id, 'cleared')}
-              >
-                Approve
-              </button>
-              <button
-                className="btn-ghost btn-small btn-danger"
-                onClick={() => updateEntityStatus(entity.entity_id, 'flagged')}
-              >
-                Block
-              </button>
-              <button
-                className="btn-ghost btn-small"
-                onClick={() => updateEntityStatus(entity.entity_id, 'overridden')}
-              >
-                Dismiss
-              </button>
-            </>
-          }
-        />
+        <div key={entity.entity_id} className="review-card-wrap">
+          {entity.status !== 'flagged' && (
+            <span className={`decision-stamp decision-stamp--${entity.status}`}>
+              {entity.status === 'cleared' ? 'Cleared — Take 1' : 'Overridden'}
+            </span>
+          )}
+          <EntityCard
+            entity={entity}
+            actions={
+              <>
+                <button
+                  className="btn-ghost btn-small btn-success"
+                  onClick={() => updateEntityStatus(entity.entity_id, 'cleared')}
+                >
+                  Approve
+                </button>
+                <button
+                  className="btn-ghost btn-small btn-danger"
+                  onClick={() => updateEntityStatus(entity.entity_id, 'flagged')}
+                >
+                  Block
+                </button>
+                <button
+                  className="btn-ghost btn-small"
+                  onClick={() => updateEntityStatus(entity.entity_id, 'overridden')}
+                >
+                  Dismiss
+                </button>
+              </>
+            }
+          />
+        </div>
       ))}
 
       <div className="review-final panel">
@@ -95,6 +107,21 @@ export default function ReviewPage() {
             Approve run
           </button>
         </div>
+      </div>
+
+      <div className="page-cta">
+        <button
+          className="btn-primary"
+          disabled={!allReviewed}
+          onClick={() => navigate('/reports')}
+        >
+          Generate report
+        </button>
+        <span className="page-cta-hint">
+          {allReviewed
+            ? 'All findings reviewed.'
+            : `${reviewedCount} of ${run.entities.length} findings reviewed.`}
+        </span>
       </div>
     </div>
   );

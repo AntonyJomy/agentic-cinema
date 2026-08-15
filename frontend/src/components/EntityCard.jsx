@@ -37,12 +37,16 @@ export default function EntityCard({ entity, actions }) {
             <span>{risk_category.replaceAll('_', ' ')}</span>
           </div>
         </div>
-        <RiskBadge status={status} />
+        <span className="entity-stamp">
+          <RiskBadge status={status} />
+        </span>
       </div>
 
       {requires_human_review && (
         <span className="entity-review-pill">Requires human review</span>
       )}
+
+      <div className="entity-ticket-perf" aria-hidden="true" />
 
       <p className="entity-context">{context}</p>
 

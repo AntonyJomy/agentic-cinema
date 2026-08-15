@@ -119,55 +119,57 @@ export default function ProcessingPage() {
             : 'Preparing clearance run…'}
       </p>
 
-      <div className="panel agent-feed">
-        {pipelineEvents.length === 0 && isLoading && (
-          <p className="agent-feed-empty">Waiting for first agent to start…</p>
-        )}
+      <div className="panel filmstrip-frame agent-feed-outer">
+        <div className="agent-feed">
+          {pipelineEvents.length === 0 && isLoading && (
+            <p className="agent-feed-empty">Waiting for first agent to start…</p>
+          )}
 
-        {Array.from(groupedEvents.entries()).map(([phase, events]) => (
-          <section key={phase} className="agent-phase">
-            <h2 className="agent-phase-title">{PHASE_LABELS[phase] || phase}</h2>
-            {events.map((event) => {
-              const state = agentState(event);
-              const label = event.entity_name
-                ? `${event.agent_name} — ${event.entity_name}`
-                : event.agent_name;
+          {Array.from(groupedEvents.entries()).map(([phase, events]) => (
+            <section key={phase} className="agent-phase">
+              <h2 className="agent-phase-title">{PHASE_LABELS[phase] || phase}</h2>
+              {events.map((event) => {
+                const state = agentState(event);
+                const label = event.entity_name
+                  ? `${event.agent_name} — ${event.entity_name}`
+                  : event.agent_name;
 
-              return (
-                <div key={event.key} className={`agent-row agent-row--${state}`}>
-                  <div className="agent-row-header">
-                    <div className="agent-marker">
-                      {state === 'done' ? '✓' : state === 'failed' ? '!' : state === 'active' ? '…' : '·'}
+                return (
+                  <div key={event.key} className={`agent-row agent-row--${state}`}>
+                    <div className="agent-row-header">
+                      <div className="agent-marker">
+                        {state === 'done' ? '✓' : state === 'failed' ? '!' : state === 'active' ? '…' : '·'}
+                      </div>
+                      <div className="agent-row-body">
+                        <span className="agent-row-title">{label}</span>
+                        {event.message && state === 'active' && (
+                          <span className="agent-row-message">{event.message}</span>
+                        )}
+                        {event.duration_seconds != null && (
+                          <span className="agent-row-duration">
+                            {formatDuration(event.duration_seconds)}
+                          </span>
+                        )}
+                      </div>
+                      {state === 'active' && <div className="step-spinner" />}
                     </div>
-                    <div className="agent-row-body">
-                      <span className="agent-row-title">{label}</span>
-                      {event.message && state === 'active' && (
-                        <span className="agent-row-message">{event.message}</span>
-                      )}
-                      {event.duration_seconds != null && (
-                        <span className="agent-row-duration">
-                          {formatDuration(event.duration_seconds)}
-                        </span>
-                      )}
-                    </div>
-                    {state === 'active' && <div className="step-spinner" />}
+
+                    {event.output && state !== 'active' && (
+                      <details className="agent-output">
+                        <summary>Agent output</summary>
+                        <pre>{formatOutput(event.output)}</pre>
+                      </details>
+                    )}
+
+                    {event.message && state === 'failed' && (
+                      <p className="agent-row-error">{event.message}</p>
+                    )}
                   </div>
-
-                  {event.output && state !== 'active' && (
-                    <details className="agent-output">
-                      <summary>Agent output</summary>
-                      <pre>{formatOutput(event.output)}</pre>
-                    </details>
-                  )}
-
-                  {event.message && state === 'failed' && (
-                    <p className="agent-row-error">{event.message}</p>
-                  )}
-                </div>
-              );
-            })}
-          </section>
-        ))}
+                );
+              })}
+            </section>
+          ))}
+        </div>
       </div>
 
       {error && (

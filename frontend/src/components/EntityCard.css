@@ -1,8 +1,48 @@
 .entity-card {
-  background: #131315;
-  border: 1px solid #1E1F22;
+  position: relative;
+  background: rgba(19, 19, 21, 0.82);
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 14px;
   padding: 22px 24px;
+  box-shadow: 0 18px 40px -28px rgba(0, 0, 0, 0.6);
+}
+
+/* Ticket "tear here" perforation — a dashed line bled to the card's edges
+   with two punched-hole notches, matching the page background so they read
+   as holes rather than dots. */
+.entity-ticket-perf {
+  position: relative;
+  height: 0;
+  margin: 16px -24px;
+  border-top: 1.5px dashed rgba(255, 255, 255, 0.14);
+}
+
+.entity-ticket-perf::before,
+.entity-ticket-perf::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #0B0B0C;
+}
+
+.entity-ticket-perf::before {
+  left: -9px;
+}
+
+.entity-ticket-perf::after {
+  right: -9px;
+}
+
+/* Rubber-stamp tilt on the risk badge, ticket-approval style. */
+.entity-stamp {
+  display: inline-block;
+  transform: rotate(-4deg);
 }
 
 .entity-card + .entity-card {
