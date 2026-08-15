@@ -88,9 +88,49 @@ For EACH entity you find, you MUST return:
    - 0.7-0.9: Clear but with minor ambiguity
    - 0.5-0.7: Somewhat ambiguous, might be fictional
    - 0.3-0.5: Uncertain, possibly fictional
-   - 0.0-0.3: Very likely fictional or generic
+   - 0.0-0.3: Very likely fictional or generic - DO NOT FLAG
+
+6. `depiction_context`: How the entity is portrayed in the script (for risk prioritization):
+   - "neutral": Mentioned factually without judgment
+   - "positive": Portrayed favorably (hero, success, achievement)
+   - "negative": Portrayed negatively (crime, scandal, failure)
+   - "suspicious": Associated with questionable context
+   - "ambiguous": Context doesn't make clear if positive/negative
+   - "on-screen": Brand/logo shown visually in a scene
+
+7. `ambiguity_reason`: Why you're uncertain about this entity (if confidence < 0.7):
+   - "could be fictional or real common name"
+   - "unclear if this is a brand or generic term"
+   - "lacks identifying context (city, profession, etc.)"
+   - "appears in a fictional context"
+   - "same name as famous person but context is fictional"
+
+IMPORTANT: Only populate `ambiguity_reason` when confidence < 0.7 and you're uncertain.
 
 # Key Rules
+
+## Depiction Context (for risk prioritization)
+Determine how the entity is portrayed to help prioritize which risks actually matter:
+
+**Positive Depiction:**
+- Hero, protagonist, or likable character
+- Success, achievement, or positive outcome
+- Brand shown in favorable context (award, quality)
+
+**Negative Depiction:**
+- Villain, antagonist, or dislikable character
+- Crime, scandal, failure, or negative outcome
+- Brand in criminal context (counterfeit, illegal activity)
+
+**Neutral/Ambiguous Depiction:**
+- Factually mentioned without judgment
+- Generic references without emotional context
+- Unclear if the portrayal is positive or negative
+
+**On-Screen Visual:**
+- Logo/brand shown visually (close-up, sign, product)
+- Name shown in text on screen
+- Document, certificate, or graphic with the entity
 
 ## Entity Classification
 - When in doubt, classify as CHARACTER_NAME instead of REAL_PUBLIC_FIGURE
@@ -115,8 +155,9 @@ For EACH entity you find, you MUST return:
 - Very low confidence (< 0.5): Likely not a real, checkable entity - DO NOT flag
 
 ## Deduplication
-- If the SAME entity appears multiple times, only flag it ONCE (first occurrence)
-- This prevents duplicate research requests
+- If the SAME entity appears multiple times with the SAME depiction context, only flag it ONCE (first occurrence)
+- If the SAME entity appears with DIFFERENT depiction contexts, flag each unique context separately
+- Example: "McDonald's" shown positively in one scene and negatively in another = two flags
 
 # Output Format
 - Return ONLY valid JSON matching the Entities schema
@@ -135,7 +176,19 @@ For EACH entity you find, you MUST return:
       "entity_type": "business",
       "context": "The characters eat at McDonald's. It's a busy lunch rush.",
       "location": {"page_number": 5, "scene_number": 2, "line_excerpt": "INT. McDONALDS - LUNCH"},
-      "confidence": 0.95
+      "confidence": 0.95,
+      "depiction_context": "on-screen",
+      "ambiguity_reason": null
+    },
+    {
+      "entity_id": "uuid2",
+      "name": "Local Diner",
+      "entity_type": "business",
+      "context": "The villain robs the Local Diner and escapes in a stolen car.",
+      "location": {"page_number": 12, "scene_number": 3, "line_excerpt": "Local Diner"},
+      "confidence": 0.65,
+      "depiction_context": "negative",
+      "ambiguity_reason": "could be fictional or real common name"
     }
   ],
   "metadata": {...}
