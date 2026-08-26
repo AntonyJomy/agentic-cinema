@@ -103,6 +103,7 @@ export default function UploadPage() {
     prepareRun({
       scriptTitle,
       scriptText,
+      sourceFileName: fileName || '',
     });
     navigate('/processing');
   }

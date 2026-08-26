@@ -6,6 +6,7 @@ import { runClearanceStream } from '../api/clearanceClient';
 const emptyPendingScript = {
   scriptTitle: '',
   scriptText: '',
+  sourceFileName: '',
 };
 
 export function RunProvider({ children }) {
@@ -17,7 +18,7 @@ export function RunProvider({ children }) {
   const [pipelineEvents, setPipelineEvents] = useState([]);
   const [pipelineDuration, setPipelineDuration] = useState(null);
 
-  const prepareRun = useCallback(({ scriptTitle = '', scriptText = '' }) => {
+  const prepareRun = useCallback(({ scriptTitle = '', scriptText = '', sourceFileName = '' }) => {
     setError(null);
     setPipelineEvents([]);
     setPipelineDuration(null);
@@ -25,10 +26,16 @@ export function RunProvider({ children }) {
     setPendingScript({
       scriptTitle: scriptTitle.trim(),
       scriptText: scriptText.trim(),
+      sourceFileName: sourceFileName.trim(),
     });
   }, []);
 
-  const runClearance = useCallback(async ({ scriptText, scriptTitle = '', onProgress } = {}) => {
+  const runClearance = useCallback(async ({
+    scriptText,
+    scriptTitle = '',
+    sourceFileName = '',
+    onProgress,
+  } = {}) => {
     const script = scriptText?.trim() ?? '';
     if (!script) {
       const message = 'No screenplay text provided.';
@@ -86,7 +93,16 @@ export function RunProvider({ children }) {
         },
       });
 
-      setRun(response.run);
+      setRun({
+        ...response.run,
+        metadata: {
+          ...(response.run.metadata || {}),
+          source_file_name:
+            sourceFileName?.trim() ||
+            response.run.metadata?.source_file_name ||
+            undefined,
+        },
+      });
       setLastResponse(response);
       return response;
     } catch (err) {

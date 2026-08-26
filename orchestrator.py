@@ -166,6 +166,49 @@ class ClearancePipelineResult:
 ProgressCallback = Callable[["PipelineProgressEvent"], Union[None, Awaitable[None]]]
 
 
+def _is_transient_gemini_error(exc: BaseException) -> bool:
+    """True when Gemini/API is temporarily overloaded or rate-limited."""
+    message = str(exc).lower()
+    return any(
+        token in message
+        for token in (
+            "503",
+            "unavailable",
+            "high demand",
+            "429",
+            "resource_exhausted",
+            "resource exhausted",
+            "try again later",
+        )
+    )
+
+
+async def _retry_on_transient(
+    operation,
+    *,
+    label: str,
+    attempts: int = 4,
+    base_delay: float = 2.0,
+):
+    """Retry an async callable on transient Gemini 503/429 errors."""
+    last_exc: BaseException | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return await operation()
+        except Exception as exc:
+            last_exc = exc
+            if not _is_transient_gemini_error(exc) or attempt == attempts:
+                raise
+            delay = base_delay * (2 ** (attempt - 1))
+            print(
+                f"  ⚠️  {label}: transient Gemini error "
+                f"(attempt {attempt}/{attempts}), retrying in {delay:.0f}s…"
+            )
+            await asyncio.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
+
+
 @dataclass
 class PipelineProgressEvent:
     """Real-time pipeline progress event for streaming UIs."""
@@ -547,64 +590,69 @@ async def process_entity(
     print(f"  Type: {specialist_config.display_name}")
     print(f"  Name: {entity.name}")
     print(f"  Context: {entity.context[:60]}..." if entity.context else "  Context: None")
-    
-    app_name = f"orchestrator_{entity.entity_type.value}_{entity_index}"
-    runner = InMemoryRunner(app_name=app_name, agent=specialist_config.create_agent())
-    
-    session = await runner.session_service.create_session(
-        app_name=app_name,
-        user_id=user_id
-    )
-    
-    # Prepare prompt for the specialist
+
     prompt = (
         f"Research the following screenplay Entity. "
         f"entity_type must be treated as {entity.entity_type.value}.\n\n"
         f"{entity.model_dump_json(indent=2)}"
     )
-    
-    research_texts: List[str] = []
-    
-    try:
+
+    async def _run_specialist_once() -> ResearchResult | None:
+        app_name = (
+            f"orchestrator_{entity.entity_type.value}_{entity_index}_"
+            f"{int(time.perf_counter() * 1000)}"
+        )
+        runner = InMemoryRunner(
+            app_name=app_name,
+            agent=specialist_config.create_agent(),
+        )
+        session = await runner.session_service.create_session(
+            app_name=app_name,
+            user_id=user_id,
+        )
+
+        research_texts: List[str] = []
         async for event in runner.run_async(
             user_id=user_id,
             session_id=session.id,
             new_message=types.Content(
                 role="user",
-                parts=[types.Part.from_text(text=prompt)]
+                parts=[types.Part.from_text(text=prompt)],
             ),
         ):
             if not event.content or not event.content.parts:
                 continue
-            
+
             for part in event.content.parts:
                 text = getattr(part, "text", None)
                 if text and getattr(event, "author", None) == specialist_config.agent_name:
                     research_texts.append(text)
-        
-        # Get research result from session state
+
         refreshed = await runner.session_service.get_session(
             app_name=app_name,
             user_id=user_id,
-            session_id=session.id
+            session_id=session.id,
         )
-        
+
         raw_result = (refreshed.state or {}).get(specialist_config.state_key) if refreshed else None
-        
-        # Fallback to last research text if state not found
         if raw_result is None and research_texts:
             raw_result = research_texts[-1]
-        
+
         if isinstance(raw_result, str):
             try:
                 raw_result = json.loads(raw_result)
             except json.JSONDecodeError:
-                # If it's not JSON, use it as a text result
                 raw_result = {"raw_text": raw_result}
-        
-        research_result = None
-        if raw_result is not None:
-            research_result = ResearchResult.model_validate(raw_result)
+
+        if raw_result is None:
+            return None
+        return ResearchResult.model_validate(raw_result)
+
+    try:
+        research_result = await _retry_on_transient(
+            _run_specialist_once,
+            label=f"{specialist_config.display_name} ({entity.name})",
+        )
 
         processing_time = time.perf_counter() - start_time
         
@@ -648,13 +696,22 @@ async def process_entity(
         print(f"  Result: ERROR (time: {processing_time:.1f}s)")
         print(f"  Error: {str(e)}")
 
+        # Soft-fail transient Gemini overload so the pipeline can continue
+        # (risk scoring will assign caution when research_result is missing).
+        error_message = str(e)
+        if _is_transient_gemini_error(e):
+            error_message = (
+                "Gemini temporarily unavailable after retries (high demand). "
+                f"Original: {e}"
+            )
+
         entity_result = EntityResult(
             entity=entity,
             research_result=None,
             specialist_config=specialist_config,
             processing_time=processing_time,
             success=False,
-            error=str(e)
+            error=error_message,
         )
         duration = time.perf_counter() - start_time
         await _emit_progress(
@@ -669,20 +726,33 @@ async def process_entity(
                 entity_name=entity.name,
                 entity_type=entity.entity_type.value,
                 output=_specialist_output(entity_result),
-                message=str(e),
+                message=error_message,
             ),
         )
         return entity_result
 
 
-def _specialist_concurrency_limit() -> int:
-    """Max concurrent specialist runs (shared MCP + Gemini quota safety)."""
-    raw = os.getenv("SPECIALIST_CONCURRENCY", "3").strip()
+def _pipeline_concurrency_limit() -> int:
+    """Max concurrent Gemini-heavy agent runs (specialists + risk scoring).
+
+    Reads PIPELINE_CONCURRENCY, then SPECIALIST_CONCURRENCY, default 2.
+    Lower values reduce 503/high-demand failures; higher values finish faster.
+    """
+    raw = (
+        os.getenv("PIPELINE_CONCURRENCY")
+        or os.getenv("SPECIALIST_CONCURRENCY")
+        or "2"
+    ).strip()
     try:
         value = int(raw)
     except ValueError:
-        value = 3
+        value = 2
     return max(1, value)
+
+
+def _specialist_concurrency_limit() -> int:
+    """Backward-compatible alias for specialist concurrency."""
+    return _pipeline_concurrency_limit()
 
 
 async def process_entities(
@@ -832,20 +902,29 @@ async def score_entity_risk(
     )
 
     prompt = build_scoring_prompt(entity, research_result)
-    final_text = None
-    async for event in runner.run_async(
-        user_id=user_id,
-        session_id=session_id,
-        new_message=types.Content(
-            role="user",
-            parts=[types.Part(text=prompt)],
-        ),
-    ):
-        if event.is_final_response() and event.content and event.content.parts:
-            final_text = event.content.parts[0].text
 
-    if not final_text:
-        raise RuntimeError(f"Risk scoring agent returned no final response for {entity.name}")
+    async def _run_scorer() -> str:
+        text = None
+        async for event in runner.run_async(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=types.Content(
+                role="user",
+                parts=[types.Part(text=prompt)],
+            ),
+        ):
+            if event.is_final_response() and event.content and event.content.parts:
+                text = event.content.parts[0].text
+        if not text:
+            raise RuntimeError(
+                f"Risk scoring agent returned no final response for {entity.name}"
+            )
+        return text
+
+    final_text = await _retry_on_transient(
+        _run_scorer,
+        label=f"Risk scoring ({entity.name})",
+    )
 
     parsed = json.loads(final_text)
     parsed["research_confidence"] = research_result.confidence
@@ -921,7 +1000,10 @@ async def run_risk_scoring(
             print(f"\n  ✗ {result.entity.name} — no research; assigned caution")
         return scored_results
 
-    print(f"\nLaunching {total} risk scoring tasks concurrently...")
+    print(f"\nLaunching {total} risk scoring tasks "
+          f"(concurrency limit={_pipeline_concurrency_limit()})...")
+
+    scoring_semaphore = asyncio.Semaphore(_pipeline_concurrency_limit())
 
     async def score_one(
         result: EntityResult,
@@ -943,14 +1025,29 @@ async def run_risk_scoring(
                 risk_result=fallback,
             )
 
-        risk_result = await score_entity_risk(
-            entity=result.entity,
-            research_result=result.research_result,
-            user_id=user_id,
-            entity_index=entity_index,
-            total_entities=total,
-            on_progress=on_progress,
-        )
+        async with scoring_semaphore:
+            try:
+                risk_result = await score_entity_risk(
+                    entity=result.entity,
+                    research_result=result.research_result,
+                    user_id=user_id,
+                    entity_index=entity_index,
+                    total_entities=total,
+                    on_progress=on_progress,
+                )
+            except Exception as exc:
+                if _is_transient_gemini_error(exc):
+                    print(
+                        f"\n  ✗ {result.entity.name} — Gemini unavailable after retries; "
+                        "assigned caution"
+                    )
+                    risk_result = build_fallback_risk_result(
+                        result.entity,
+                        "Risk scoring temporarily unavailable (Gemini high demand); "
+                        "manual review recommended.",
+                    )
+                else:
+                    raise
         return EntityResult(
             entity=result.entity,
             research_result=result.research_result,

@@ -66,6 +66,7 @@ export default function ProcessingPage() {
         await runClearance({
           scriptText: pendingScript.scriptText,
           scriptTitle: pendingScript.scriptTitle,
+          sourceFileName: pendingScript.sourceFileName,
         });
         if (!cancelled) {
           setCompleted(true);
