@@ -1,86 +1,111 @@
 /**
  * API client for the clearance backend.
  *
- * In dev, requests go through the Vite proxy (same origin) unless VITE_API_URL is set.
+ * One central base URL:
+ * - Development: VITE_API_URL, or '' to use the Vite proxy
+ * - Production: VITE_API_URL is required (no localhost fallback)
  */
 
-const DEFAULT_API_URL = import.meta.env.DEV ? '' : 'http://localhost:8000';
+const GENERIC_CONNECT = 'Unable to connect to the clearance service.';
+const GENERIC_FAILED = 'The clearance request could not be completed.';
+const GENERIC_PROCESS = 'An error occurred while analysing the script.';
 
 function getApiBaseUrl() {
   const configured = import.meta.env.VITE_API_URL?.replace(/\/$/, '');
-  if (configured !== undefined && configured !== '') {
-    return configured;
+  if (import.meta.env.DEV) {
+    if (configured !== undefined && configured !== '') {
+      return configured;
+    }
+    return '';
   }
-  return DEFAULT_API_URL;
+  if (!configured) {
+    throw new Error('VITE_API_URL is required in production builds.');
+  }
+  return configured;
+}
+
+function apiUrl(path) {
+  const base = getApiBaseUrl();
+  return `${base}${path}`;
 }
 
 function formatErrorDetail(detail) {
-  if (typeof detail === 'string') {
+  if (typeof detail === 'string' && detail.trim()) {
     return detail;
   }
   if (Array.isArray(detail)) {
-    return detail
-      .map((item) => (typeof item?.msg === 'string' ? item.msg : JSON.stringify(item)))
-      .join('; ');
+    const messages = detail
+      .map((item) => (typeof item?.msg === 'string' ? item.msg : null))
+      .filter(Boolean);
+    if (messages.length) return messages.join('; ');
   }
-  return 'Clearance request failed';
+  return GENERIC_FAILED;
 }
 
 function networkErrorMessage(error) {
-  const message = error instanceof Error ? error.message : 'Network error';
-  if (
-    message === 'Load failed' ||
-    message === 'Failed to fetch' ||
-    message === 'NetworkError when attempting to fetch resource.'
-  ) {
-    return (
-      'Could not reach the clearance backend. ' +
-      'Start it with: .venv/bin/uvicorn api.main:app --reload --port 8000'
-    );
+  if (error instanceof Error && error.name === 'AbortError') {
+    return error;
   }
-  return message;
+  return new Error(GENERIC_CONNECT);
 }
 
-export async function runClearance({ script, scriptTitle }) {
+function statusMessage(status, fallback) {
+  if (status === 413) return 'The uploaded file is too large.';
+  if (status === 429) return 'Too many requests. Please wait and try again.';
+  if (status === 503) return 'The clearance service is temporarily unavailable.';
+  if (status >= 500) return fallback || GENERIC_PROCESS;
+  return fallback || GENERIC_FAILED;
+}
+
+async function readJsonSafe(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+async function parseError(response, fallback) {
+  const payload = await readJsonSafe(response);
+  if (payload?.detail != null) {
+    const formatted = formatErrorDetail(payload.detail);
+    if (response.status >= 500) {
+      return statusMessage(response.status, fallback);
+    }
+    return formatted;
+  }
+  return statusMessage(response.status, fallback);
+}
+
+export async function runClearance({ script, scriptTitle, sourceFileName, signal }) {
   let response;
   try {
-    response = await fetch(`${getApiBaseUrl()}/clearance`, {
+    response = await fetch(apiUrl('/clearance'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         script,
         script_title: scriptTitle || undefined,
+        source_file_name: sourceFileName || undefined,
       }),
+      signal,
     });
   } catch (error) {
-    throw new Error(networkErrorMessage(error));
-  }
-
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
+    throw networkErrorMessage(error);
   }
 
   if (!response.ok) {
-    const message =
-      payload?.detail != null
-        ? formatErrorDetail(payload.detail)
-        : response.status === 503
-          ? 'Clearance service is unavailable. Is the backend running?'
-          : `Clearance request failed (${response.status})`;
-    throw new Error(message);
+    throw new Error(await parseError(response, GENERIC_PROCESS));
   }
 
+  const payload = await readJsonSafe(response);
+  if (!payload?.run?.run_id) {
+    throw new Error(GENERIC_FAILED);
+  }
   return payload;
 }
 
-/**
- * Extract screenplay text from an uploaded .txt or .pdf file.
- * @param {{ file: File, scriptTitle?: string }} params
- */
-export async function extractScriptFile({ file, scriptTitle }) {
+export async function extractScriptFile({ file, scriptTitle, signal }) {
   const formData = new FormData();
   formData.append('file', file);
   if (scriptTitle?.trim()) {
@@ -89,45 +114,42 @@ export async function extractScriptFile({ file, scriptTitle }) {
 
   let response;
   try {
-    response = await fetch(`${getApiBaseUrl()}/extract-script`, {
+    response = await fetch(apiUrl('/extract-script'), {
       method: 'POST',
       body: formData,
+      signal,
     });
   } catch (error) {
-    throw new Error(networkErrorMessage(error));
-  }
-
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
+    throw networkErrorMessage(error);
   }
 
   if (!response.ok) {
-    const message =
-      payload?.detail != null
-        ? formatErrorDetail(payload.detail)
-        : `Could not extract text from file (${response.status})`;
-    throw new Error(message);
+    throw new Error(await parseError(response, 'Could not extract text from this file.'));
   }
 
+  const payload = await readJsonSafe(response);
+  if (!payload || typeof payload.script !== 'string') {
+    throw new Error('Could not extract text from this file.');
+  }
   return payload;
 }
 
-/**
- * Run clearance with live agent progress streamed as NDJSON.
- * @param {{ script: string, scriptTitle?: string, onProgress?: (event: object) => void, signal?: AbortSignal }} params
- */
-export async function runClearanceStream({ script, scriptTitle, onProgress, signal }) {
+export async function runClearanceStream({
+  script,
+  scriptTitle,
+  sourceFileName,
+  onProgress,
+  signal,
+}) {
   let response;
   try {
-    response = await fetch(`${getApiBaseUrl()}/clearance/stream`, {
+    response = await fetch(apiUrl('/clearance/stream'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         script,
         script_title: scriptTitle || undefined,
+        source_file_name: sourceFileName || undefined,
       }),
       signal,
     });
@@ -135,25 +157,15 @@ export async function runClearanceStream({ script, scriptTitle, onProgress, sign
     if (error instanceof Error && error.name === 'AbortError') {
       throw error;
     }
-    throw new Error(networkErrorMessage(error));
+    throw new Error(GENERIC_CONNECT);
   }
 
   if (!response.ok) {
-    let payload = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-    const message =
-      payload?.detail != null
-        ? formatErrorDetail(payload.detail)
-        : `Clearance request failed (${response.status})`;
-    throw new Error(message);
+    throw new Error(await parseError(response, GENERIC_PROCESS));
   }
 
   if (!response.body) {
-    throw new Error('Clearance stream unavailable (no response body).');
+    throw new Error('Processing could not be completed.');
   }
 
   const reader = response.body.getReader();
@@ -171,7 +183,12 @@ export async function runClearanceStream({ script, scriptTitle, onProgress, sign
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      const event = JSON.parse(line);
+      let event;
+      try {
+        event = JSON.parse(line);
+      } catch {
+        throw new Error('Processing could not be completed.');
+      }
 
       if (event.type === 'progress') {
         onProgress?.(event);
@@ -182,24 +199,99 @@ export async function runClearanceStream({ script, scriptTitle, onProgress, sign
           duration_seconds: event.duration_seconds,
         });
       } else if (event.type === 'error') {
-        throw new Error(event.detail || 'Clearance pipeline failed');
+        throw new Error(event.detail || GENERIC_PROCESS);
       }
     }
   }
 
-  if (!finalResult) {
-    throw new Error('Clearance stream ended without a final result.');
+  if (!finalResult?.run?.run_id) {
+    throw new Error('Processing could not be completed.');
   }
 
   return finalResult;
 }
 
+export async function getClearanceRun(runId, { signal } = {}) {
+  let response;
+  try {
+    response = await fetch(apiUrl(`/clearance/${encodeURIComponent(runId)}`), {
+      method: 'GET',
+      signal,
+    });
+  } catch (error) {
+    throw networkErrorMessage(error);
+  }
+  if (!response.ok) {
+    throw new Error(await parseError(response, GENERIC_FAILED));
+  }
+  const payload = await readJsonSafe(response);
+  if (!payload?.run?.run_id) {
+    throw new Error(GENERIC_FAILED);
+  }
+  return payload;
+}
+
+export async function recordEntityDecision(runId, entityId, { decision, comment, signal } = {}) {
+  let response;
+  try {
+    response = await fetch(
+      apiUrl(
+        `/clearance/${encodeURIComponent(runId)}/entities/${encodeURIComponent(entityId)}/decision`
+      ),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision,
+          comment: comment || undefined,
+        }),
+        signal,
+      }
+    );
+  } catch (error) {
+    throw networkErrorMessage(error);
+  }
+  if (!response.ok) {
+    throw new Error(await parseError(response, GENERIC_FAILED));
+  }
+  const payload = await readJsonSafe(response);
+  if (!payload?.run?.run_id) {
+    throw new Error(GENERIC_FAILED);
+  }
+  return payload;
+}
+
+export async function recordOverallDecision(runId, { decision, comment, signal } = {}) {
+  let response;
+  try {
+    response = await fetch(apiUrl(`/clearance/${encodeURIComponent(runId)}/decision`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        decision,
+        comment: comment || undefined,
+      }),
+      signal,
+    });
+  } catch (error) {
+    throw networkErrorMessage(error);
+  }
+  if (!response.ok) {
+    throw new Error(await parseError(response, GENERIC_FAILED));
+  }
+  const payload = await readJsonSafe(response);
+  if (!payload?.run?.run_id) {
+    throw new Error(GENERIC_FAILED);
+  }
+  return payload;
+}
+
 export async function checkBackendHealth() {
   let response;
   try {
-    response = await fetch(`${getApiBaseUrl()}/health`);
+    response = await fetch(apiUrl('/health'));
   } catch (error) {
-    throw new Error(networkErrorMessage(error));
+    throw networkErrorMessage(error);
   }
   if (!response.ok) {
     throw new Error('Backend health check failed');

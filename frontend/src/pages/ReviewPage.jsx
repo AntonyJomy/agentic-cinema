@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRun } from '../context/useRun';
 import EntityCard from '../components/EntityCard';
@@ -5,36 +6,79 @@ import { allEntitiesReviewed } from '../context/steps';
 import '../styles/shared.css';
 import './ReviewPage.css';
 
-const REVIEWER_NAME = 'Ben Okafor (Legal)';
+const DECISION_TO_API = {
+  cleared: 'approved',
+  blocked: 'blocked',
+  overridden: 'approved',
+};
 
 export default function ReviewPage() {
-  const { run, updateEntityStatus, setOverallStatus } = useRun();
+  const {
+    run,
+    lastResponse,
+    submitEntityDecision,
+    reloadRun,
+    error,
+    isLoading,
+  } = useRun();
   const navigate = useNavigate();
+  const [busyId, setBusyId] = useState(null);
+
+  useEffect(() => {
+    if (run.run_id) {
+      reloadRun(run.run_id).catch(() => {});
+    }
+  }, [run.run_id, reloadRun]);
 
   const highRisk = run.entities.filter((e) => e.requires_human_review);
   const highRiskResolved = highRisk.filter((e) => e.status !== 'flagged');
   const gateClear = highRisk.length === 0 || highRiskResolved.length === highRisk.length;
-
   const reviewedCount = run.entities.filter((e) => e.status !== 'flagged').length;
   const allReviewed = allEntitiesReviewed(run);
+  const clearedForExport = lastResponse?.cleared_for_export === true;
+
+  async function handleEntityDecision(entityId, uiStatus) {
+    const decision = DECISION_TO_API[uiStatus];
+    if (!decision) return;
+    setBusyId(entityId);
+    try {
+      await submitEntityDecision(
+        entityId,
+        decision,
+        uiStatus === 'overridden' ? 'dismissed' : undefined
+      );
+    } catch {
+      // error is stored on context
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <div className="app-page">
       <span className="page-eyebrow">STEP 4 · LEGAL REVIEW</span>
       <h1 className="page-title">Review &amp; decide</h1>
       <p className="page-sub">
-        Approve, block, or dismiss each flagged entity. The run can't be
-        approved until every high-risk entity has a decision.
+        Approve, block, or dismiss each flagged entity. Decisions are stored on
+        the server. Export eligibility is calculated by the gatekeeper from those
+        entity decisions.
       </p>
 
       <div className={'gatekeeper-banner' + (gateClear ? ' is-clear' : ' is-blocked')}>
         <span className="gatekeeper-title">
-          {gateClear ? 'Gatekeeper check passed' : 'Gatekeeper check pending'}
+          {clearedForExport
+            ? 'Cleared for export'
+            : gateClear
+              ? 'High-risk entities resolved'
+              : 'Gatekeeper check pending'}
         </span>
         <span className="gatekeeper-detail">
           {highRiskResolved.length} of {highRisk.length} high-risk entities resolved
+          {run.reviewed_by ? ` · Reviewer: ${run.reviewed_by}` : ''}
         </span>
       </div>
+
+      {error && <p className="upload-error">{error}</p>}
 
       <div className="run-header panel">
         <div>
@@ -53,10 +97,10 @@ export default function ReviewPage() {
           {entity.status !== 'flagged' && (
             <span className={`decision-stamp decision-stamp--${entity.status}`}>
               {entity.status === 'cleared'
-                ? 'Cleared — Take 1'
+                ? 'Approved'
                 : entity.status === 'blocked'
                   ? 'Blocked'
-                  : 'Overridden'}
+                  : 'Dismissed'}
             </span>
           )}
           <EntityCard
@@ -65,19 +109,22 @@ export default function ReviewPage() {
               <>
                 <button
                   className="btn-ghost btn-small btn-success"
-                  onClick={() => updateEntityStatus(entity.entity_id, 'cleared')}
+                  disabled={busyId === entity.entity_id || isLoading}
+                  onClick={() => handleEntityDecision(entity.entity_id, 'cleared')}
                 >
                   Approve
                 </button>
                 <button
                   className="btn-ghost btn-small btn-danger"
-                  onClick={() => updateEntityStatus(entity.entity_id, 'blocked')}
+                  disabled={busyId === entity.entity_id || isLoading}
+                  onClick={() => handleEntityDecision(entity.entity_id, 'blocked')}
                 >
                   Block
                 </button>
                 <button
                   className="btn-ghost btn-small"
-                  onClick={() => updateEntityStatus(entity.entity_id, 'overridden')}
+                  disabled={busyId === entity.entity_id || isLoading}
+                  onClick={() => handleEntityDecision(entity.entity_id, 'overridden')}
                 >
                   Dismiss
                 </button>
@@ -86,32 +133,6 @@ export default function ReviewPage() {
           />
         </div>
       ))}
-
-      <div className="review-final panel">
-        <div>
-          <span className="run-header-title">Final decision</span>
-          <span className="run-header-sub">
-            {gateClear
-              ? 'All high-risk entities are resolved — the run can be approved.'
-              : 'Resolve every high-risk entity above before approving.'}
-          </span>
-        </div>
-        <div className="review-final-actions">
-          <button
-            className="btn-ghost btn-danger"
-            onClick={() => setOverallStatus('rejected', REVIEWER_NAME)}
-          >
-            Block run
-          </button>
-          <button
-            className="btn-primary"
-            disabled={!gateClear}
-            onClick={() => setOverallStatus('approved', REVIEWER_NAME)}
-          >
-            Approve run
-          </button>
-        </div>
-      </div>
 
       <div className="page-cta">
         <button

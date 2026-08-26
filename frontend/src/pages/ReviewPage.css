@@ -90,27 +90,3 @@
   font-size: 11.5px;
   color: #8B8A85;
 }
-
-.review-final {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 24px;
-}
-
-.review-final .run-header-title {
-  display: block;
-}
-
-.review-final .run-header-sub {
-  display: block;
-  margin-top: 4px;
-  max-width: 420px;
-}
-
-.review-final-actions {
-  display: flex;
-  gap: 10px;
-}

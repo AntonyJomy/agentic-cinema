@@ -1,5 +1,6 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useRun } from '../context/useRun';
+import { isSafeHttpUrl } from '../api/safeUrl';
 import '../styles/shared.css';
 import './ReportsPage.css';
 
@@ -78,7 +79,7 @@ function buildWarnings(run, lastResponse) {
       !e.research_finding ||
       (typeof e.research_finding === 'string' &&
         /unavailable|high demand|503|tool_failure|not available/i.test(
-          e.research_finding + (e.ai_reasoning || '')
+          e.research_finding
         ))
   );
 
@@ -99,7 +100,7 @@ function buildWarnings(run, lastResponse) {
   }
   if (lastResponse && lastResponse.cleared_for_export === false) {
     warnings.push(
-      'Gatekeeper did not clear this run for export at pipeline time. Confirm human decisions before sharing externally.'
+      'This run is not cleared for export. Confirm human decisions before sharing externally.'
     );
   }
   if (researchGaps.length) {
@@ -173,8 +174,14 @@ function DecisionTable({ title, tone, entities }) {
 }
 
 export default function ReportsPage() {
-  const { run, lastResponse } = useRun();
+  const { run, lastResponse, reloadRun } = useRun();
   const reportRef = useRef(null);
+
+  useEffect(() => {
+    if (run.run_id) {
+      reloadRun(run.run_id).catch(() => {});
+    }
+  }, [run.run_id, reloadRun]);
 
   const grouped = useMemo(() => {
     const buckets = {
@@ -202,7 +209,7 @@ export default function ReportsPage() {
   const summary = lastResponse?.summary;
   const gatekeeper = lastResponse?.gatekeeper;
   const recommendations = lastResponse?.recommendations ?? [];
-  const statistics = lastResponse?.statistics;
+  const clearedForExport = lastResponse?.cleared_for_export === true;
 
   function handlePrint() {
     const previousTitle = document.title;
@@ -220,26 +227,43 @@ export default function ReportsPage() {
   function handleDownloadJson() {
     downloadFullReport(
       {
-      generated_at: new Date().toISOString(),
-      product: 'ScriptClear AI',
-      document_type: 'E&O Clearance Report',
-      export_name: exportBase,
-      source_file_name: run.metadata?.source_file_name || null,
-      run,
-      summary,
-      gatekeeper,
-      legal_review: lastResponse?.legal_review ?? null,
-      statistics,
-      recommendations,
-      cleared_for_export: lastResponse?.cleared_for_export ?? false,
-      duration_seconds: lastResponse?.duration_seconds ?? null,
-      decision_ledger: {
-        approved: grouped.cleared.map((e) => e.name),
-        blocked: grouped.blocked.map((e) => e.name),
-        dismissed: grouped.overridden.map((e) => e.name),
-        still_flagged: grouped.flagged.map((e) => e.name),
-      },
-      warnings,
+        generated_at: new Date().toISOString(),
+        product: 'ScriptClear AI',
+        document_type: 'E&O Clearance Report',
+        export_name: exportBase,
+        script_title: run.script_title || null,
+        overall_status: run.overall_status,
+        cleared_for_export: clearedForExport,
+        reviewed_by: run.reviewed_by,
+        reviewed_at: run.reviewed_at,
+        summary,
+        gatekeeper: gatekeeper
+          ? {
+              status: gatekeeper.status,
+              reason: gatekeeper.reason,
+              message: gatekeeper.message,
+              cleared_for_export: gatekeeper.cleared_for_export,
+            }
+          : null,
+        recommendations,
+        entities: run.entities.map((entity) => ({
+          name: entity.name,
+          entity_type: entity.entity_type,
+          location: entity.location,
+          risk_level: entity.risk_level,
+          status: entity.status,
+          research_finding: entity.research_finding,
+          evidence: (entity.evidence || []).filter(
+            (ev) => !ev.source_url || isSafeHttpUrl(ev.source_url)
+          ),
+        })),
+        decision_ledger: {
+          approved: grouped.cleared.map((e) => e.name),
+          blocked: grouped.blocked.map((e) => e.name),
+          dismissed: grouped.overridden.map((e) => e.name),
+          still_flagged: grouped.flagged.map((e) => e.name),
+        },
+        warnings,
       },
       exportBase
     );
@@ -259,7 +283,7 @@ export default function ReportsPage() {
           Print / Save as PDF
         </button>
         <button className="btn-ghost" onClick={handleDownloadJson}>
-          Download full JSON
+          Download report JSON
         </button>
         <span className="report-export-hint">
           Export name: <code>{exportBase}</code>
@@ -278,9 +302,11 @@ export default function ReportsPage() {
             {run.script_title || 'Untitled Screenplay'}
           </h2>
           <div className="report-cover-meta">
-            <span>Run ID: {run.run_id}</span>
-            <span>Script ID: {run.script_id}</span>
             <span>Generated: {formatDate(new Date().toISOString())}</span>
+            <span>
+              Export eligibility:{' '}
+              {clearedForExport ? 'Cleared for export' : 'Not cleared for export'}
+            </span>
           </div>
         </header>
 
@@ -314,10 +340,6 @@ export default function ReportsPage() {
               <dd>{formatDate(run.created_at)}</dd>
             </div>
             <div>
-              <dt>Extraction model</dt>
-              <dd>{run.metadata?.model_used ?? '—'}</dd>
-            </div>
-            <div>
               <dt>Pages scanned</dt>
               <dd>{run.metadata?.total_pages_scanned ?? '—'}</dd>
             </div>
@@ -326,18 +348,8 @@ export default function ReportsPage() {
               <dd>{run.entities.length}</dd>
             </div>
             <div>
-              <dt>Duration</dt>
-              <dd>
-                {lastResponse?.duration_seconds != null
-                  ? `${Number(lastResponse.duration_seconds).toFixed(1)}s`
-                  : '—'}
-              </dd>
-            </div>
-            <div>
               <dt>Cleared for export</dt>
-              <dd>
-                {lastResponse?.cleared_for_export ? 'Yes' : 'No'}
-              </dd>
+              <dd>{clearedForExport ? 'Yes' : 'No'}</dd>
             </div>
           </dl>
         </section>
@@ -476,27 +488,24 @@ export default function ReportsPage() {
                     <span>Research:</span> {entity.research_finding}
                   </p>
                 )}
-                {entity.ai_reasoning && (
-                  <p className="report-appendix-finding">
-                    <span>AI reasoning:</span> {entity.ai_reasoning}
-                  </p>
-                )}
                 {Array.isArray(entity.evidence) && entity.evidence.length > 0 && (
                   <ul className="report-evidence">
                     {entity.evidence.map((ev, i) => (
                       <li key={`${entity.entity_id}-ev-${i}`}>
-                        {ev.source_url ? (
+                        {isSafeHttpUrl(ev.source_url) ? (
                           <a
                             href={ev.source_url}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                           >
                             {ev.source_url}
                           </a>
                         ) : (
                           ev.summary || 'Evidence item'
                         )}
-                        {ev.summary ? ` — ${ev.summary}` : ''}
+                        {ev.summary && isSafeHttpUrl(ev.source_url)
+                          ? ` — ${ev.summary}`
+                          : ''}
                       </li>
                     ))}
                   </ul>

@@ -74,6 +74,19 @@ class IsolatedParallelMcpToolset(BaseToolset):
         self,
         readonly_context: Optional[ReadonlyContext] = None,
     ) -> List[BaseTool]:
+        try:
+            return await self._get_tools_inner(readonly_context)
+        except Exception:
+            logger.warning(
+                "Parallel MCP unavailable; continuing without web_search tools",
+                exc_info=True,
+            )
+            return []
+
+    async def _get_tools_inner(
+        self,
+        readonly_context: Optional[ReadonlyContext] = None,
+    ) -> List[BaseTool]:
         inner = _build_raw_parallel_mcp_toolset()
         async with self._lock:
             self._keepalive.append(inner)

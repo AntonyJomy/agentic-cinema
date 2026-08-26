@@ -76,8 +76,7 @@ export default function Hero() {
             faster and with confidence.
           </p>
           <div className="cta-row">
-            <button className="btn-primary">See it in action</button>
-            <button className="btn-ghost">How it works</button>
+            <a className="btn-primary" href="/upload">See it in action</a>
           </div>
           <p className="scroll-hint">Scroll to explore ↓</p>
         </div>

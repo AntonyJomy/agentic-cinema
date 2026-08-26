@@ -310,7 +310,6 @@ export default function ScrollStory() {
               </p>
               <div className="cta-row">
                 <Link className="btn-primary" to="/upload">See it in action</Link>
-                <button className="btn-ghost">How it works</button>
               </div>
               <p className="scroll-hint">Scroll to explore ↓</p>
             </>
