@@ -52,7 +52,11 @@ export default function ReviewPage() {
         <div key={entity.entity_id} className="review-card-wrap">
           {entity.status !== 'flagged' && (
             <span className={`decision-stamp decision-stamp--${entity.status}`}>
-              {entity.status === 'cleared' ? 'Cleared — Take 1' : 'Overridden'}
+              {entity.status === 'cleared'
+                ? 'Cleared — Take 1'
+                : entity.status === 'blocked'
+                  ? 'Blocked'
+                  : 'Overridden'}
             </span>
           )}
           <EntityCard
@@ -67,7 +71,7 @@ export default function ReviewPage() {
                 </button>
                 <button
                   className="btn-ghost btn-small btn-danger"
-                  onClick={() => updateEntityStatus(entity.entity_id, 'flagged')}
+                  onClick={() => updateEntityStatus(entity.entity_id, 'blocked')}
                 >
                   Block
                 </button>

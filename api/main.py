@@ -76,6 +76,24 @@ def _validate_clearance_request(request: ClearanceRequest) -> str:
     return script
 
 
+def _pipeline_error_detail(exc: Exception) -> tuple[int, str]:
+    """Map pipeline exceptions to an HTTP status + user-facing detail."""
+    message = str(exc)
+    lowered = message.lower()
+    if any(
+        token in lowered
+        for token in ("503", "unavailable", "high demand", "resource_exhausted", "429")
+    ):
+        return (
+            503,
+            "Gemini is temporarily overloaded (high demand). Wait a moment and try again.",
+        )
+    return (
+        500,
+        "Clearance pipeline failed. Check server logs for details.",
+    )
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -143,10 +161,8 @@ async def run_clearance(request: ClearanceRequest) -> ClearanceResponse:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Clearance pipeline failed")
-        raise HTTPException(
-            status_code=500,
-            detail="Clearance pipeline failed. Check server logs for details.",
-        ) from exc
+        status, detail = _pipeline_error_detail(exc)
+        raise HTTPException(status_code=status, detail=detail) from exc
 
     if request.script_title:
         pipeline_result.grounded_entities = pipeline_result.grounded_entities.model_copy(
@@ -201,11 +217,12 @@ async def run_clearance_stream(request: ClearanceRequest) -> StreamingResponse:
                 await queue.put({"type": "error", "status": 422, "detail": str(exc)})
             except Exception as exc:
                 logger.exception("Streaming clearance pipeline failed")
+                status, detail = _pipeline_error_detail(exc)
                 await queue.put(
                     {
                         "type": "error",
-                        "status": 500,
-                        "detail": "Clearance pipeline failed. Check server logs for details.",
+                        "status": status,
+                        "detail": detail,
                         "message": str(exc),
                     }
                 )
