@@ -13,6 +13,7 @@ import os
 from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
 from schemas.entities import Entities
+from agents.model_config import get_gemini_model
 
 # Load environment variables from .env file
 load_dotenv()
@@ -27,7 +28,7 @@ elif not os.getenv("GOOGLE_API_KEY"):
 
 # Create the extraction agent
 extractor = LlmAgent(
-    model="gemini-3.6-flash",
+    model=get_gemini_model(),
     name="extractor",
     description="Extracts flagged entities from screenplays for legal clearance review.",
     instruction="""

@@ -20,6 +20,7 @@ from google.adk.agents import LlmAgent
 
 from schemas.risk_result import RiskLevel, RiskResult
 from schemas.summary_result import SummaryResult
+from agents.model_config import get_gemini_model
 
 if TYPE_CHECKING:
     pass
@@ -29,7 +30,7 @@ load_dotenv()
 if os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
-MODEL = "gemini-3.6-flash"
+MODEL = get_gemini_model()
 
 
 def compute_risk_counts(risk_results: list[RiskResult]) -> dict[str, int]:

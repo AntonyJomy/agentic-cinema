@@ -73,21 +73,7 @@
   font-size: 13px;
   color: #8B8A85;
   line-height: 1.6;
-  margin-bottom: 16px;
-}
-
-.learn-more {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: #A6A49C;
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-}
-
-.learn-more:hover {
-  color: #F2F0EA;
-  border-bottom-color: #F2F0EA;
+  margin-bottom: 0;
 }
 
 .trust-bar {

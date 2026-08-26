@@ -10,7 +10,7 @@ downstream scoring agent).
 """
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from schemas.entities import EntityType
 
@@ -36,6 +36,17 @@ class Citation(BaseModel):
         default="parallel",
         description="How this evidence was obtained (always 'parallel' for MCP search)",
     )
+
+    @field_validator("source_url")
+    @classmethod
+    def http_https_only(cls, value: str) -> str:
+        from urllib.parse import urlparse
+
+        text = (value or "").strip()
+        parsed = urlparse(text)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("source_url must be an http or https URL")
+        return text
 
 
 class ResearchResult(BaseModel):

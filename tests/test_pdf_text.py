@@ -9,6 +9,10 @@ import os
 import sys
 from pathlib import Path
 
+os.environ["CLEARANCE_STORE"] = "memory"
+os.environ["RATE_LIMIT_PER_MINUTE"] = "1000"
+os.environ.setdefault("ENVIRONMENT", "development")
+
 import pytest
 
 project_root = Path(__file__).resolve().parents[1]
@@ -46,6 +50,12 @@ def test_extract_text_from_pdf_rejects_empty():
 def test_extract_text_from_pdf_rejects_garbage():
     with pytest.raises(PdfExtractionError):
         extract_text_from_pdf(b"not-a-pdf")
+
+
+def test_extract_text_from_pdf_rejects_too_many_pages(sample_pdf_bytes: bytes, monkeypatch):
+    monkeypatch.setattr("api.pdf_text.max_pdf_pages", lambda: 0)
+    with pytest.raises(PdfExtractionError, match="maximum"):
+        extract_text_from_pdf(sample_pdf_bytes)
 
 
 def test_extract_script_endpoint_pdf(sample_pdf_bytes: bytes):

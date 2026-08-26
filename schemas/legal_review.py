@@ -29,8 +29,8 @@ class ReviewDecision(str, Enum):
 # Maps human decisions to Firestore entity status conventions (frontend/Firestore).
 DECISION_TO_FIRESTORE_STATUS: dict[ReviewDecision, str | None] = {
     ReviewDecision.APPROVED: "cleared",
-    ReviewDecision.BLOCKED: "flagged",
-    ReviewDecision.NEEDS_REVIEW: None,
+    ReviewDecision.BLOCKED: "blocked",
+    ReviewDecision.NEEDS_REVIEW: "flagged",
 }
 
 

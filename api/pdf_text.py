@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import pymupdf
 
+from api.settings import max_pdf_pages
+
 
 class PdfExtractionError(Exception):
     """Raised when PDF text extraction fails or yields no usable text."""
@@ -15,8 +17,8 @@ class PdfExtractionError(Exception):
 def extract_text_from_pdf(pdf_bytes: bytes) -> tuple[str, int]:
     """Return (full_text, page_count) extracted from a PDF.
 
-    Raises PdfExtractionError when the file is not a readable PDF or
-    contains no extractable text.
+    Raises PdfExtractionError when the file is not a readable PDF,
+    exceeds MAX_PDF_PAGES, or contains no extractable text.
     """
     if not pdf_bytes:
         raise PdfExtractionError("PDF file is empty")
@@ -30,6 +32,12 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> tuple[str, int]:
         page_count = len(doc)
         if page_count == 0:
             raise PdfExtractionError("PDF has no pages")
+
+        limit = max_pdf_pages()
+        if page_count > limit:
+            raise PdfExtractionError(
+                f"PDF exceeds the maximum of {limit} pages."
+            )
 
         parts: list[str] = []
         for page_num in range(page_count):
