@@ -22,6 +22,12 @@
   border-color: rgba(111, 207, 151, 0.35);
 }
 
+.risk-badge--blocked {
+  color: #E2725B;
+  background: rgba(226, 114, 91, 0.12);
+  border-color: rgba(226, 114, 91, 0.35);
+}
+
 .risk-badge--overridden {
   color: #8AA9C9;
   background: rgba(138, 169, 201, 0.12);
