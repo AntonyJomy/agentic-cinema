@@ -29,7 +29,7 @@ from fastapi.responses import StreamingResponse
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root))
 
-load_dotenv(project_root / ".env")
+load_dotenv(project_root / ".env", override=True)
 if os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
