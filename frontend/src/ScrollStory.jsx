@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from './auth/AuthContext';
 import './ScrollStory.css';
 
 const TOTAL_FRAMES = 240;
@@ -42,11 +43,6 @@ const FEATURES = [
     ),
   },
   {
-    title: 'Secure and compliant',
-    desc: 'Built on Google Cloud with IAM approval gates. Nothing ships until Legal approves.',
-    icon: <path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z" />,
-  },
-  {
     title: 'Human-in-the-loop',
     desc: 'Legal reviews flagged risks, adds context, and makes the final call.',
     icon: (
@@ -59,8 +55,8 @@ const FEATURES = [
     ),
   },
   {
-    title: 'Insurance ready',
-    desc: 'Generate clean, structured reports built for E&O insurers and legal teams.',
+    title: 'Clearance reports',
+    desc: 'Export structured reports with findings, decisions, and warnings for legal teams.',
     icon: (
       <>
         <path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z" />
@@ -99,6 +95,9 @@ function lerp(from, to, amount) {
 }
 
 export default function ScrollStory() {
+  const { isAuthenticated } = useAuth();
+  const ctaTo = isAuthenticated ? '/dashboard' : '/login';
+  const ctaState = isAuthenticated ? undefined : { from: '/upload' };
   const wrapperRef = useRef(null);
   const imgRef = useRef(null);
   const itemRefs = useRef([]);
@@ -305,11 +304,13 @@ export default function ScrollStory() {
               <h1>Clear scripts.<br />Protect stories.</h1>
               <p className="story-sub">
                 ScriptClear AI uses an agent crew to identify legal risks, research
-                real-world evidence, and deliver insurance-ready clearance reports —
-                faster and with confidence.
+                real-world evidence, and deliver structured clearance reports for
+                human legal review.
               </p>
               <div className="cta-row">
-                <Link className="btn-primary" to="/upload">See it in action</Link>
+                <Link className="btn-primary" to={ctaTo} state={ctaState}>
+                  See it in action
+                </Link>
               </div>
               <p className="scroll-hint">Scroll to explore ↓</p>
             </>
@@ -331,17 +332,22 @@ export default function ScrollStory() {
             <div className="glass-card">
               <div className="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="5" y="11" width="14" height="9" rx="2" />
-                  <path d="M8 11V7a4 4 0 018 0v4" />
+                  <path d="M4 19V5" />
+                  <path d="M4 19h16" />
+                  <path d="M8 15V9" />
+                  <path d="M12 15V7" />
+                  <path d="M16 15v-4" />
                 </svg>
               </div>
-              <h2 className="feature-title">Enterprise grade security</h2>
+              <h2 className="feature-title">Ready to clear a script?</h2>
               <p className="feature-desc">
-                Google Cloud infrastructure, IAM approval gates, Firebase authentication,
-                and a full audit trail on every decision.
+                Upload a screenplay, run the agent crew, review findings with legal,
+                and export a clearance report.
               </p>
               <div className="cta-row">
-                <Link className="btn-primary" to="/upload">Book a demo</Link>
+                <Link className="btn-primary" to={ctaTo} state={ctaState}>
+                  See it in action
+                </Link>
               </div>
             </div>
           )}

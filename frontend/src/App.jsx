@@ -9,6 +9,7 @@ import { STEPS, getMaxStepIndex } from './context/steps';
 import { AuthProvider } from './auth/AuthContext';
 import RequireAuth from './auth/RequireAuth';
 import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
 import UploadPage from './pages/UploadPage';
 import ProcessingPage from './pages/ProcessingPage';
 import FindingsPage from './pages/FindingsPage';
@@ -34,7 +35,8 @@ function AppLayout() {
 
   // Steps are sequential — jumping ahead (via nav, back button, or a typed
   // URL) bounces back to the furthest step the run has actually reached.
-  if (currentStep > maxStep) {
+  // Non-step routes (e.g. /dashboard) are not gated.
+  if (currentStep >= 0 && currentStep > maxStep) {
     return <Navigate to={STEPS[maxStep].path} replace />;
   }
 
@@ -61,6 +63,7 @@ function App() {
               </RequireAuth>
             }
           >
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/upload" element={<UploadPage />} />
             <Route path="/processing" element={<ProcessingPage />} />
             <Route path="/findings" element={<FindingsPage />} />

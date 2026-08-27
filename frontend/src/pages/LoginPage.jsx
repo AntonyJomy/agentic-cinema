@@ -9,7 +9,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const redirectTo = location.state?.from || '/upload';
+  const redirectTo = location.state?.from || '/dashboard';
 
   if (configured && !loading && isAuthenticated) {
     return <Navigate to={redirectTo} replace />;

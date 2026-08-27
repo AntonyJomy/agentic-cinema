@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRun } from '../context/useRun';
+import { downloadClearancePdf } from '../api/clearanceClient';
 import { isSafeHttpUrl } from '../api/safeUrl';
 import '../styles/shared.css';
 import './ReportsPage.css';
@@ -176,6 +177,8 @@ function DecisionTable({ title, tone, entities }) {
 export default function ReportsPage() {
   const { run, lastResponse, reloadRun } = useRun();
   const reportRef = useRef(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState('');
 
   useEffect(() => {
     if (run.run_id) {
@@ -214,14 +217,29 @@ export default function ReportsPage() {
   function handlePrint() {
     const previousTitle = document.title;
     document.title = exportBase;
+    document.body.classList.add('is-printing');
+
     const restore = () => {
       document.title = previousTitle;
+      document.body.classList.remove('is-printing');
       window.removeEventListener('afterprint', restore);
     };
+
     window.addEventListener('afterprint', restore);
-    window.print();
-    // Fallback if afterprint doesn't fire in some browsers
-    setTimeout(restore, 1000);
+
+    // Let the print class apply before the dialog opens (avoids blank sheets
+    // in Chromium when fixed overlays / isolation are still painted).
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        try {
+          window.print();
+        } catch {
+          restore();
+        }
+        // Fallback if afterprint never fires (some WebViews).
+        window.setTimeout(restore, 2000);
+      });
+    });
   }
 
   function handleDownloadJson() {
@@ -269,26 +287,50 @@ export default function ReportsPage() {
     );
   }
 
+  async function handleDownloadPdf() {
+    if (!run.run_id) return;
+    setPdfBusy(true);
+    setPdfError('');
+    try {
+      await downloadClearancePdf(run.run_id, {
+        filename: `${exportBase}.pdf`,
+      });
+    } catch (err) {
+      setPdfError(err instanceof Error ? err.message : 'Could not download PDF.');
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
   return (
     <div className="app-page reports-page">
       <span className="page-eyebrow">STEP 5 · REPORT</span>
-      <h1 className="page-title">Insurance-ready report</h1>
+      <h1 className="page-title">Clearance report</h1>
       <p className="page-sub">
-        Branded clearance certificate with AI findings, human decisions,
+        Branded clearance summary with AI findings, human decisions,
         warnings, and gatekeeper status — ready to print or export.
       </p>
 
       <div className="report-toolbar no-print">
-        <button className="btn-primary" onClick={handlePrint}>
+        <button type="button" className="btn-primary" onClick={handlePrint}>
           Print / Save as PDF
         </button>
-        <button className="btn-ghost" onClick={handleDownloadJson}>
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={handleDownloadPdf}
+          disabled={!run.run_id || pdfBusy}
+        >
+          {pdfBusy ? 'Downloading…' : 'Download PDF'}
+        </button>
+        <button type="button" className="btn-ghost" onClick={handleDownloadJson}>
           Download report JSON
         </button>
         <span className="report-export-hint">
           Export name: <code>{exportBase}</code>
         </span>
       </div>
+      {pdfError ? <p className="report-pdf-error no-print">{pdfError}</p> : null}
 
       <article ref={reportRef} className="clearance-report panel">
         <header className="report-cover">

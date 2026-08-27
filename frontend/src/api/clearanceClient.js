@@ -225,6 +225,73 @@ export async function runClearanceStream({
   return finalResult;
 }
 
+export async function listClearanceRuns({ signal } = {}) {
+  let response;
+  try {
+    response = await fetch(apiUrl('/clearance'), {
+      method: 'GET',
+      headers: await authHeaders(),
+      signal,
+    });
+  } catch (error) {
+    throw networkErrorMessage(error);
+  }
+  if (!response.ok) {
+    throw new Error(await parseError(response, GENERIC_FAILED));
+  }
+  const payload = await readJsonSafe(response);
+  if (!payload || !Array.isArray(payload.runs)) {
+    throw new Error(GENERIC_FAILED);
+  }
+  return payload.runs;
+}
+
+export async function downloadClearancePdf(runId, { signal, filename } = {}) {
+  let response;
+  try {
+    response = await fetch(
+      apiUrl(`/clearance/${encodeURIComponent(runId)}/pdf`),
+      {
+        method: 'GET',
+        headers: await authHeaders(),
+        signal,
+      }
+    );
+  } catch (error) {
+    throw networkErrorMessage(error);
+  }
+  if (!response.ok) {
+    throw new Error(await parseError(response, GENERIC_FAILED));
+  }
+
+  const blob = await response.blob();
+  if (!blob || blob.size < 5) {
+    throw new Error('The PDF download was empty.');
+  }
+  // Guard against error JSON being saved as a ".pdf"
+  const head = await blob.slice(0, 5).text();
+  if (head !== '%PDF-') {
+    throw new Error('The server did not return a valid PDF.');
+  }
+
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="([^"]+)"/i);
+  const downloadName = filename || match?.[1] || 'clearance_report.pdf';
+
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = downloadName;
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export async function getClearanceRun(runId, { signal } = {}) {
   let response;
   try {
