@@ -79,6 +79,7 @@ class ClearanceRunResponse(BaseModel):
     run_id: str
     script_id: str
     script_title: str | None = None
+    script_file_url: str | None = None  # Cloud Storage URL for uploaded file
     created_at: str
     updated_at: str
     overall_status: str
