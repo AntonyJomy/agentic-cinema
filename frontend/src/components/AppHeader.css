@@ -11,7 +11,61 @@
 }
 
 .app-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 16px 24px 0;
+}
+
+.app-header-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-header-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+.app-header-email {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: rgba(242, 240, 234, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.app-header-signout {
+  flex: none;
+  border: 1px solid rgba(242, 240, 234, 0.16);
+  background: transparent;
+  color: #f2f0ea;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-header-signout:hover {
+  border-color: rgba(212, 162, 76, 0.45);
+  color: #d4a24c;
+}
+
+@media (max-width: 640px) {
+  .app-header-email {
+    display: none;
+  }
 }
 
 .app-header-brand {

@@ -6,6 +6,9 @@ import DustField from './components/DustField';
 import { RunProvider } from './context/RunContext';
 import { useRun } from './context/useRun';
 import { STEPS, getMaxStepIndex } from './context/steps';
+import { AuthProvider } from './auth/AuthContext';
+import RequireAuth from './auth/RequireAuth';
+import LoginPage from './pages/LoginPage';
 import UploadPage from './pages/UploadPage';
 import ProcessingPage from './pages/ProcessingPage';
 import FindingsPage from './pages/FindingsPage';
@@ -46,18 +49,27 @@ function AppLayout() {
 
 function App() {
   return (
-    <RunProvider>
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route element={<AppLayout />}>
-          <Route path="/upload" element={<UploadPage />} />
-          <Route path="/processing" element={<ProcessingPage />} />
-          <Route path="/findings" element={<FindingsPage />} />
-          <Route path="/review" element={<ReviewPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-        </Route>
-      </Routes>
-    </RunProvider>
+    <AuthProvider>
+      <RunProvider>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            element={
+              <RequireAuth>
+                <AppLayout />
+              </RequireAuth>
+            }
+          >
+            <Route path="/upload" element={<UploadPage />} />
+            <Route path="/processing" element={<ProcessingPage />} />
+            <Route path="/findings" element={<FindingsPage />} />
+            <Route path="/review" element={<ReviewPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+          </Route>
+        </Routes>
+      </RunProvider>
+    </AuthProvider>
   );
 }
 
