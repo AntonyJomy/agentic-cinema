@@ -9,6 +9,10 @@ import os
 import sys
 from pathlib import Path
 
+os.environ["CLEARANCE_STORE"] = "memory"
+os.environ["RATE_LIMIT_PER_MINUTE"] = "1000"
+os.environ.setdefault("ENVIRONMENT", "development")
+
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root))
 

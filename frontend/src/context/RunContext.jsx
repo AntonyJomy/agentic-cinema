@@ -1,7 +1,15 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { mockRun } from '../data/mockRun';
 import { RunContext } from './run-context';
-import { runClearanceStream } from '../api/clearanceClient';
+import {
+  getClearanceRun,
+  recordEntityDecision,
+  recordOverallDecision,
+  runClearanceStream,
+} from '../api/clearanceClient';
+
+const RUN_STORAGE_KEY = 'scriptclear_run_id';
+const useMockRun = import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_RUN === 'true';
 
 const emptyPendingScript = {
   scriptTitle: '',
@@ -9,8 +17,41 @@ const emptyPendingScript = {
   sourceFileName: '',
 };
 
+const emptyRun = {
+  run_id: '',
+  script_id: '',
+  script_title: '',
+  created_at: '',
+  updated_at: '',
+  overall_status: 'pending',
+  reviewed_by: null,
+  reviewed_at: null,
+  entities: [],
+  metadata: {},
+};
+
+function persistRunId(runId) {
+  try {
+    if (runId) {
+      sessionStorage.setItem(RUN_STORAGE_KEY, runId);
+    } else {
+      sessionStorage.removeItem(RUN_STORAGE_KEY);
+    }
+  } catch {
+    // sessionStorage may be unavailable
+  }
+}
+
+function readStoredRunId() {
+  try {
+    return sessionStorage.getItem(RUN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function RunProvider({ children }) {
-  const [run, setRun] = useState(mockRun);
+  const [run, setRun] = useState(useMockRun ? mockRun : emptyRun);
   const [pendingScript, setPendingScript] = useState(emptyPendingScript);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -18,11 +59,37 @@ export function RunProvider({ children }) {
   const [pipelineEvents, setPipelineEvents] = useState([]);
   const [pipelineDuration, setPipelineDuration] = useState(null);
 
+  const applyServerResponse = useCallback((response) => {
+    if (!response?.run) return;
+    setRun(response.run);
+    setLastResponse(response);
+    persistRunId(response.run.run_id);
+  }, []);
+
+  useEffect(() => {
+    if (useMockRun) return;
+    const storedId = readStoredRunId();
+    if (!storedId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await getClearanceRun(storedId);
+        if (!cancelled) applyServerResponse(response);
+      } catch {
+        if (!cancelled) persistRunId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyServerResponse]);
+
   const prepareRun = useCallback(({ scriptTitle = '', scriptText = '', sourceFileName = '' }) => {
     setError(null);
     setPipelineEvents([]);
     setPipelineDuration(null);
     setLastResponse(null);
+    persistRunId(null);
     setPendingScript({
       scriptTitle: scriptTitle.trim(),
       scriptText: scriptText.trim(),
@@ -30,90 +97,109 @@ export function RunProvider({ children }) {
     });
   }, []);
 
-  const runClearance = useCallback(async ({
-    scriptText,
-    scriptTitle = '',
-    sourceFileName = '',
-    onProgress,
-  } = {}) => {
-    const script = scriptText?.trim() ?? '';
-    if (!script) {
-      const message = 'No screenplay text provided.';
-      setError(message);
-      throw new Error(message);
-    }
+  const runClearance = useCallback(
+    async ({
+      scriptText,
+      scriptTitle = '',
+      sourceFileName = '',
+      onProgress,
+    } = {}) => {
+      const script = scriptText?.trim() ?? '';
+      if (!script) {
+        const message = 'No screenplay text provided.';
+        setError(message);
+        throw new Error(message);
+      }
 
-    setIsLoading(true);
-    setError(null);
-    setPipelineEvents([]);
-    setPipelineDuration(null);
+      setIsLoading(true);
+      setError(null);
+      setPipelineEvents([]);
+      setPipelineDuration(null);
 
-    try {
-      const response = await runClearanceStream({
-        script,
-        scriptTitle: scriptTitle?.trim() || undefined,
-        onProgress: (event) => {
-          if (event.type === 'pipeline_complete') {
-            setPipelineDuration(event.duration_seconds ?? null);
-            onProgress?.(event);
-            return;
-          }
-
-          setPipelineEvents((previous) => {
-            const key = `${event.agent_id}:${event.entity_name ?? ''}`;
-            const next = [...previous];
-            const existingIndex = next.findIndex(
-              (item) => `${item.agent_id}:${item.entity_name ?? ''}` === key
-            );
-
-            if (event.event === 'agent_start') {
-              const entry = { ...event, key, startedAt: Date.now() };
-              if (existingIndex >= 0) {
-                next[existingIndex] = entry;
-              } else {
-                next.push(entry);
-              }
-            } else if (event.event === 'agent_complete') {
-              const entry = {
-                ...(existingIndex >= 0 ? next[existingIndex] : {}),
-                ...event,
-                key,
-                completedAt: Date.now(),
-              };
-              if (existingIndex >= 0) {
-                next[existingIndex] = entry;
-              } else {
-                next.push(entry);
-              }
+      try {
+        const response = await runClearanceStream({
+          script,
+          scriptTitle: scriptTitle?.trim() || undefined,
+          sourceFileName: sourceFileName?.trim() || undefined,
+          onProgress: (event) => {
+            if (event.type === 'pipeline_complete') {
+              setPipelineDuration(event.duration_seconds ?? null);
+              onProgress?.(event);
+              return;
             }
+            setPipelineEvents((previous) => [...previous, event]);
+            onProgress?.(event);
+          },
+        });
+        applyServerResponse(response);
+        return response;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Processing could not be completed.';
+        setError(message);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [applyServerResponse]
+  );
 
-            return next;
-          });
-          onProgress?.(event);
-        },
-      });
-
-      setRun({
-        ...response.run,
-        metadata: {
-          ...(response.run.metadata || {}),
-          source_file_name:
-            sourceFileName?.trim() ||
-            response.run.metadata?.source_file_name ||
-            undefined,
-        },
-      });
-      setLastResponse(response);
+  const reloadRun = useCallback(
+    async (runId = run.run_id) => {
+      if (!runId) return null;
+      const response = await getClearanceRun(runId);
+      applyServerResponse(response);
       return response;
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Clearance pipeline failed';
-      setError(message);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    },
+    [applyServerResponse, run.run_id]
+  );
+
+  const submitEntityDecision = useCallback(
+    async (entityId, decision, comment) => {
+      if (!run.run_id) {
+        throw new Error('No clearance run is loaded.');
+      }
+      setError(null);
+      try {
+        const response = await recordEntityDecision(run.run_id, entityId, {
+          decision,
+          comment,
+        });
+        applyServerResponse(response);
+        return response;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'The clearance request could not be completed.';
+        setError(message);
+        throw err;
+      }
+    },
+    [applyServerResponse, run.run_id]
+  );
+
+  const submitOverallDecision = useCallback(
+    async (decision, comment) => {
+      if (!run.run_id) {
+        throw new Error('No clearance run is loaded.');
+      }
+      setError(null);
+      try {
+        const response = await recordOverallDecision(run.run_id, {
+          decision,
+          comment,
+        });
+        applyServerResponse(response);
+        return response;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'The clearance request could not be completed.';
+        setError(message);
+        throw err;
+      }
+    },
+    [applyServerResponse, run.run_id]
+  );
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -128,30 +214,11 @@ export function RunProvider({ children }) {
       pipelineDuration,
       prepareRun,
       runClearance,
+      reloadRun,
+      submitEntityDecision,
+      submitOverallDecision,
       clearError,
-      resetRun: (scriptTitle) =>
-        setRun({
-          ...mockRun,
-          script_title: scriptTitle?.trim() || mockRun.script_title,
-          overall_status: 'pending',
-          reviewed_by: null,
-          reviewed_at: null,
-          entities: mockRun.entities.map((e) => ({ ...e, status: 'flagged' })),
-        }),
-      updateEntityStatus: (entityId, status) =>
-        setRun((prev) => ({
-          ...prev,
-          entities: prev.entities.map((e) =>
-            e.entity_id === entityId ? { ...e, status } : e
-          ),
-        })),
-      setOverallStatus: (status, reviewerName) =>
-        setRun((prev) => ({
-          ...prev,
-          overall_status: status,
-          reviewed_by: reviewerName ?? prev.reviewed_by,
-          reviewed_at: new Date().toISOString(),
-        })),
+      applyServerResponse,
     }),
     [
       run,
@@ -163,7 +230,11 @@ export function RunProvider({ children }) {
       pipelineDuration,
       prepareRun,
       runClearance,
+      reloadRun,
+      submitEntityDecision,
+      submitOverallDecision,
       clearError,
+      applyServerResponse,
     ]
   );
 

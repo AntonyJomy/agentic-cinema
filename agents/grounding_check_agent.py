@@ -16,6 +16,7 @@ import os
 
 from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
+from agents.model_config import get_gemini_model
 
 from schemas.entities import Entities
 
@@ -41,7 +42,7 @@ def build_grounding_prompt(screenplay_text: str, entities: Entities) -> str:
 
 
 grounding_checker = LlmAgent(
-    model="gemini-3.6-flash",
+    model=get_gemini_model(),
     name="grounding_checker",
     description=(
         "Validates extracted screenplay entities against the original "

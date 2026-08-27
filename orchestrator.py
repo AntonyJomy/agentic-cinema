@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import time
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,6 +58,7 @@ from agents.character_name_specialist import (
     character_name_specialist,
 )
 from agents.extraction_agent import extractor
+from agents.model_config import get_gemini_model
 from gatekeeper.deterministic_grounding import ground_entities
 from agents.literary_reference_specialist import (
     STATE_RESEARCH_RESULT as LITERARY_STATE_RESULT,
@@ -242,14 +244,6 @@ async def _emit_progress(
 def _extraction_output(entities: Entities) -> dict:
     return {
         "entity_count": entities.entity_count,
-        "entities": [
-            {
-                "name": entity.name,
-                "entity_type": entity.entity_type.value,
-                "confidence": entity.confidence,
-            }
-            for entity in entities.entities
-        ],
     }
 
 
@@ -263,62 +257,39 @@ def _grounding_output(
         "extracted_count": extracted_count,
         "grounded_count": len(grounded),
         "rejected_count": len(rejected),
-        "grounded": [entity.name for entity in grounded],
-        "rejected": [entity.name for entity in rejected],
     }
 
 
 def _specialist_output(entity_result: EntityResult) -> dict:
     research = entity_result.research_result
     return {
-        "entity_name": entity_result.entity.name,
-        "entity_type": entity_result.entity.entity_type.value,
         "success": entity_result.success,
-        "research_status": research.status.value if research else None,
-        "finding": research.finding if research else None,
-        "confidence": research.confidence if research else None,
         "citation_count": len(research.citations) if research else 0,
-        "error": entity_result.error,
     }
 
 
 def _risk_scoring_output(risk_result: RiskResult) -> dict:
     return {
-        "entity_name": risk_result.entity_name,
-        "entity_type": risk_result.entity_type.value,
-        "risk_level": risk_result.risk_level.value,
-        "triggered_rule": risk_result.triggered_rule,
         "requires_human_review": risk_result.requires_human_review,
-        "reasoning": risk_result.reasoning,
     }
 
 
 def _summary_output(summary: SummaryResult) -> dict:
     return {
         "total_entities": summary.total_entities,
-        "clear_count": summary.clear_count,
-        "caution_count": summary.caution_count,
-        "high_risk_count": summary.high_risk_count,
-        "overall_summary": summary.overall_summary,
-        "priority_items": summary.priority_items,
     }
 
 
 def _legal_review_output(package: LegalReviewPackage) -> dict:
     return {
         "pending_review_count": package.pending_review_count,
-        "overall_decision": package.overall_decision.value,
         "unresolved_required_count": package.unresolved_required_count,
     }
 
 
 def _gatekeeper_output(result: GatekeeperResult) -> dict:
     return {
-        "status": result.status.value,
-        "reason": result.reason.value,
         "cleared_for_export": result.cleared_for_export,
-        "message": result.message,
-        "blocking_entity_ids": result.blocking_entity_ids,
     }
 
 
@@ -403,35 +374,42 @@ async def run_extraction(
             status="running",
         ),
     )
-    
-    session_service = InMemorySessionService()
-    runner = Runner(
-        agent=extractor,
-        app_name="orchestrator_extraction",
-        session_service=session_service
+
+    async def _run_extraction_once() -> str:
+        session_service = InMemorySessionService()
+        runner = Runner(
+            agent=extractor,
+            app_name="orchestrator_extraction",
+            session_service=session_service,
+        )
+        session_id = f"extraction-{uuid.uuid4().hex[:8]}"
+        await session_service.create_session(
+            app_name="orchestrator_extraction",
+            user_id=user_id,
+            session_id=session_id,
+        )
+        final_text = None
+        async for event in runner.run_async(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=types.Content(
+                role="user",
+                parts=[types.Part(text=screenplay_text)],
+            ),
+        ):
+            if event.is_final_response() and event.content and event.content.parts:
+                final_text = event.content.parts[0].text
+        if not final_text:
+            raise RuntimeError("Extraction agent returned no final response")
+        return final_text
+
+    final_text = await _retry_on_transient(
+        _run_extraction_once,
+        label="Extraction",
+        attempts=5,
+        base_delay=3.0,
     )
-    
-    await session_service.create_session(
-        app_name="orchestrator_extraction",
-        user_id=user_id,
-        session_id="extraction"
-    )
-    
-    final_text = None
-    async for event in runner.run_async(
-        user_id=user_id,
-        session_id="extraction",
-        new_message=types.Content(
-            role="user",
-            parts=[types.Part(text=screenplay_text)]
-        ),
-    ):
-        if event.is_final_response() and event.content and event.content.parts:
-            final_text = event.content.parts[0].text
-    
-    if not final_text:
-        raise RuntimeError("Extraction agent returned no final response")
-    
+
     # Parse the JSON response
     try:
         parsed = json.loads(final_text)
@@ -439,17 +417,17 @@ async def run_extraction(
         print(f"Error parsing extraction output: {e}")
         print(f"Raw output:\n{final_text}")
         raise
-    
+
     # Add metadata
     parsed["metadata"] = {
-        "model_used": "gemini-3.6-flash",
+        "model_used": get_gemini_model(),
         "extracted_at": datetime.now(timezone.utc).isoformat(),
         "extraction_agent_version": "0.1.0",
         "total_pages_scanned": parsed.get("metadata", {}).get("total_pages_scanned", 0),
     }
-    
+
     entities = Entities.model_validate(parsed)
-    
+
     print(f"\nExtracted {entities.entity_count} entities:")
     for i, entity in enumerate(entities.entities, 1):
         risk_str = entity.risk_category.value if entity.risk_category else "None"
@@ -471,7 +449,7 @@ async def run_extraction(
             output=_extraction_output(entities),
         ),
     )
-    
+
     return entities
 
 
@@ -698,12 +676,11 @@ async def process_entity(
 
         # Soft-fail transient Gemini overload so the pipeline can continue
         # (risk scoring will assign caution when research_result is missing).
-        error_message = str(e)
+        # Do not put exception text on public progress events.
         if _is_transient_gemini_error(e):
-            error_message = (
-                "Gemini temporarily unavailable after retries (high demand). "
-                f"Original: {e}"
-            )
+            error_message = "Research temporarily unavailable. The pipeline will continue."
+        else:
+            error_message = "Specialist research could not be completed."
 
         entity_result = EntityResult(
             entity=entity,
@@ -1330,7 +1307,7 @@ def generate_report(
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
             "duration_seconds": (end_time - start_time).total_seconds(),
-            "model_used": "gemini-3.6-flash",
+            "model_used": get_gemini_model(),
             "cleared_for_export": (
                 gatekeeper_result.cleared_for_export if gatekeeper_result else False
             ),

@@ -5,12 +5,21 @@ HTTP request/response models for the clearance API.
 """
 from pydantic import BaseModel, Field
 
+from schemas.legal_review import ReviewDecision
+
 
 class ClearanceRequest(BaseModel):
-    """POST /clearance request body."""
+    """POST /clearance request body.
+
+    Identity fields (user_id, reviewer_id, reviewer_name, role) are rejected
+    by omission — the server uses get_current_user() only.
+    """
 
     script: str = Field(..., min_length=1, description="Screenplay text")
     script_title: str | None = Field(None, description="Optional script title")
+    source_file_name: str | None = Field(
+        None, description="Original filename for display only"
+    )
 
 
 class ExtractScriptResponse(BaseModel):
@@ -22,6 +31,24 @@ class ExtractScriptResponse(BaseModel):
         None, description="PDF page count when source was a PDF"
     )
     script_title: str | None = Field(None, description="Optional script title")
+
+
+class EntityDecisionRequest(BaseModel):
+    """POST /clearance/{run_id}/entities/{entity_id}/decision"""
+
+    decision: ReviewDecision
+    comment: str | None = Field(None, max_length=2000)
+
+
+class OverallDecisionRequest(BaseModel):
+    """POST /clearance/{run_id}/decision
+
+    The server records this request then re-runs evaluate_clearance().
+    Sending APPROVED does not force cleared_for_export.
+    """
+
+    decision: ReviewDecision
+    comment: str | None = Field(None, max_length=2000)
 
 
 class ClearanceEntityResponse(BaseModel):
@@ -52,13 +79,14 @@ class ClearanceRunResponse(BaseModel):
     run_id: str
     script_id: str
     script_title: str | None = None
+    script_file_url: str | None = None  # Cloud Storage URL for uploaded file
     created_at: str
     updated_at: str
     overall_status: str
     reviewed_by: str | None = None
     reviewed_at: str | None = None
     entities: list[ClearanceEntityResponse]
-    metadata: dict
+    metadata: dict = Field(default_factory=dict)
 
 
 class ClearanceResponse(BaseModel):

@@ -1,4 +1,5 @@
 import RiskBadge from './RiskBadge';
+import { isSafeHttpUrl } from '../api/safeUrl';
 import './EntityCard.css';
 
 const TYPE_LABELS = {
@@ -26,6 +27,8 @@ export default function EntityCard({ entity, actions }) {
     status,
   } = entity;
 
+  const evidenceItems = Array.isArray(evidence) ? evidence : [];
+
   return (
     <div className="entity-card">
       <div className="entity-card-head">
@@ -34,7 +37,7 @@ export default function EntityCard({ entity, actions }) {
           <div className="entity-meta">
             <span>{TYPE_LABELS[entity_type] ?? entity_type}</span>
             <span className="entity-meta-dot">·</span>
-            <span>{risk_category.replaceAll('_', ' ')}</span>
+            <span>{(risk_category || '').replaceAll('_', ' ')}</span>
           </div>
         </div>
         <span className="entity-stamp">
@@ -51,29 +54,35 @@ export default function EntityCard({ entity, actions }) {
       <p className="entity-context">{context}</p>
 
       <div className="entity-location">
-        {location.scene_number != null && <span>Scene {location.scene_number}</span>}
-        {location.page_number != null && <span>Page {location.page_number}</span>}
-        <span className="entity-excerpt">&ldquo;{location.line_excerpt}&rdquo;</span>
+        {location?.scene_number != null && <span>Scene {location.scene_number}</span>}
+        {location?.page_number != null && <span>Page {location.page_number}</span>}
+        {location?.line_excerpt && (
+          <span className="entity-excerpt">&ldquo;{location.line_excerpt}&rdquo;</span>
+        )}
       </div>
 
       <div className="entity-confidence">
         <div className="confidence-track">
           <div
             className="confidence-fill"
-            style={{ width: `${Math.round(confidence * 100)}%` }}
+            style={{ width: `${Math.round((confidence || 0) * 100)}%` }}
           />
         </div>
-        <span>{Math.round(confidence * 100)}% extraction confidence</span>
+        <span>{Math.round((confidence || 0) * 100)}% extraction confidence</span>
       </div>
 
-      {evidence.length > 0 ? (
+      {evidenceItems.length > 0 ? (
         <ul className="entity-evidence">
-          {evidence.map((ev) => (
-            <li key={ev.source_url}>
-              <a href={ev.source_url} target="_blank" rel="noreferrer">
-                {ev.source_url}
-              </a>
-              <p>{ev.summary}</p>
+          {evidenceItems.map((ev, index) => (
+            <li key={ev.source_url || `${name}-ev-${index}`}>
+              {isSafeHttpUrl(ev.source_url) ? (
+                <a href={ev.source_url} target="_blank" rel="noopener noreferrer">
+                  {ev.source_url}
+                </a>
+              ) : (
+                <span>{ev.summary || 'Evidence item'}</span>
+              )}
+              {ev.summary && isSafeHttpUrl(ev.source_url) ? <p>{ev.summary}</p> : null}
             </li>
           ))}
         </ul>
