@@ -9,6 +9,11 @@ import os
 import sys
 from pathlib import Path
 
+# Force a local store and high rate limit before any API import.
+os.environ["CLEARANCE_STORE"] = "memory"
+os.environ["RATE_LIMIT_PER_MINUTE"] = "1000"
+os.environ.setdefault("ENVIRONMENT", "development")
+
 import pytest
 from dotenv import load_dotenv
 

@@ -20,7 +20,10 @@ export default function FindingsPage() {
         <div>
           <h2 className="run-header-title">{run.script_title}</h2>
           <span className="run-header-sub">
-            {run.entities.length} entities · {run.metadata.total_pages_scanned} pages scanned
+            {run.entities.length} entities
+            {run.metadata?.total_pages_scanned
+              ? ` · ${run.metadata.total_pages_scanned} pages scanned`
+              : ''}
           </span>
         </div>
         <span className={`status-pill status-pill--${run.overall_status}`}>

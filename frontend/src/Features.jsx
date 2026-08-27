@@ -83,7 +83,6 @@ export default function Features() {
             </div>
             <h3>{f.title}</h3>
             <p>{f.desc}</p>
-            <a href="#" className="learn-more">Learn more <span aria-hidden="true">›</span></a>
           </div>
         ))}
       </div>

@@ -7,14 +7,17 @@ export const STEPS = [
 ];
 
 export function allEntitiesReviewed(run) {
-  return run.entities.every((e) => e.status !== 'flagged');
+  const entities = run?.entities ?? [];
+  if (!entities.length) return false;
+  return entities.every((e) => e.status !== 'flagged');
 }
 
-// Furthest step index the user is allowed to reach, derived from run state
-// rather than tracked separately, so it can never drift out of sync.
 export function getMaxStepIndex({ pendingScript, lastResponse, run }) {
+  const hasServerRun = Boolean(run?.run_id && lastResponse);
+  if (hasServerRun) {
+    return allEntitiesReviewed(run) ? 4 : 3;
+  }
   if (!pendingScript?.scriptText) return 0;
   if (!lastResponse) return 1;
-  if (allEntitiesReviewed(run)) return 4;
   return 3;
 }

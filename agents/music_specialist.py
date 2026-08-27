@@ -24,6 +24,7 @@ from google.adk.tools.exit_loop_tool import exit_loop
 
 from gatekeeper.parallel_mcp import build_parallel_mcp_toolset
 from schemas.research_result import ResearchResult
+from agents.model_config import get_gemini_model
 
 load_dotenv()
 
@@ -32,7 +33,7 @@ load_dotenv()
 if os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
-MODEL = "gemini-3.6-flash"
+MODEL = get_gemini_model()
 
 # Session state keys shared inside the LoopAgent.
 STATE_RESEARCH_RESULT = "music_research_result"

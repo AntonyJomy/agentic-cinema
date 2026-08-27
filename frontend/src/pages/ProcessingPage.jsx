@@ -4,15 +4,16 @@ import { useRun } from '../context/useRun';
 import '../styles/shared.css';
 import './ProcessingPage.css';
 
-const PHASE_LABELS = {
-  extraction: 'Extraction',
-  grounding: 'Grounding',
-  specialist: 'Research Specialists',
-  risk_scoring: 'Risk Scoring',
-  summary: 'Summary',
-  legal_review: 'Legal Review',
-  gatekeeper: 'Gatekeeper',
-};
+const STAGES = [
+  { id: 'received', label: 'Upload received' },
+  { id: 'extraction', label: 'Extracting script' },
+  { id: 'analysis', label: 'Running analysis' },
+  { id: 'research', label: 'Running specialist reviews' },
+  { id: 'risks', label: 'Evaluating risks' },
+  { id: 'summary', label: 'Preparing summary' },
+  { id: 'legal_review', label: 'Preparing legal review' },
+  { id: 'gatekeeper', label: 'Running gatekeeper' },
+];
 
 function formatDuration(seconds) {
   if (seconds == null) return null;
@@ -22,19 +23,18 @@ function formatDuration(seconds) {
   return `${mins}m ${secs}s`;
 }
 
-function formatOutput(output) {
-  if (!output) return null;
-  try {
-    return JSON.stringify(output, null, 2);
-  } catch {
-    return String(output);
-  }
-}
-
-function agentState(event) {
-  if (event.event === 'agent_start' && event.status === 'running') return 'active';
-  if (event.event === 'agent_complete') {
-    return event.status === 'failed' ? 'failed' : 'done';
+function stageState(events, stageId, isLoading, completed) {
+  const matching = events.filter((event) => event.stage === stageId);
+  if (matching.some((event) => event.status === 'failed')) return 'failed';
+  if (matching.some((event) => event.status === 'completed')) return 'done';
+  if (matching.some((event) => event.status === 'running')) return 'active';
+  if (completed) return 'done';
+  if (isLoading) {
+    const firstPending = STAGES.find((stage) => {
+      const hits = events.filter((event) => event.stage === stage.id);
+      return !hits.some((event) => event.status === 'completed');
+    });
+    if (firstPending?.id === stageId) return 'active';
   }
   return 'pending';
 }
@@ -49,10 +49,15 @@ export default function ProcessingPage() {
     clearError,
     pipelineEvents,
     pipelineDuration,
+    lastResponse,
   } = useRun();
-  const [completed, setCompleted] = useState(false);
+  const [completed, setCompleted] = useState(Boolean(lastResponse?.run?.run_id));
 
   useEffect(() => {
+    if (lastResponse?.run?.run_id) {
+      setCompleted(true);
+      return;
+    }
     if (!pendingScript.scriptText) {
       navigate('/upload', { replace: true });
       return;
@@ -68,13 +73,9 @@ export default function ProcessingPage() {
           scriptTitle: pendingScript.scriptTitle,
           sourceFileName: pendingScript.sourceFileName,
         });
-        if (!cancelled) {
-          setCompleted(true);
-        }
+        if (!cancelled) setCompleted(true);
       } catch {
-        if (!cancelled) {
-          setCompleted(false);
-        }
+        if (!cancelled) setCompleted(false);
       }
     })();
 
@@ -84,29 +85,22 @@ export default function ProcessingPage() {
   }, [
     pendingScript.scriptText,
     pendingScript.scriptTitle,
+    pendingScript.sourceFileName,
     runClearance,
     navigate,
     clearError,
+    lastResponse?.run?.run_id,
   ]);
 
-  const groupedEvents = useMemo(() => {
-    const groups = new Map();
+  const latestCounts = useMemo(() => {
+    const counts = {};
     for (const event of pipelineEvents) {
-      const phase = event.phase || 'other';
-      if (!groups.has(phase)) {
-        groups.set(phase, []);
+      if (event.stage && typeof event.count === 'number') {
+        counts[event.stage] = event.count;
       }
-      groups.get(phase).push(event);
     }
-    return groups;
+    return counts;
   }, [pipelineEvents]);
-
-  const runningCount = pipelineEvents.filter(
-    (event) => event.event !== 'agent_complete'
-  ).length;
-  const completedCount = pipelineEvents.filter(
-    (event) => event.event === 'agent_complete'
-  ).length;
 
   return (
     <div className="app-page">
@@ -114,7 +108,7 @@ export default function ProcessingPage() {
       <h1 className="page-title">Running the clearance pipeline</h1>
       <p className="page-sub">
         {isLoading
-          ? `Live agent feed — ${completedCount} completed${runningCount ? `, ${runningCount} running` : ''}.`
+          ? 'Live progress — extraction, research, risk scoring, and gatekeeper.'
           : completed
             ? `Clearance pipeline complete${pipelineDuration != null ? ` in ${formatDuration(pipelineDuration)}` : ''}.`
             : 'Preparing clearance run…'}
@@ -122,54 +116,26 @@ export default function ProcessingPage() {
 
       <div className="panel filmstrip-frame agent-feed-outer">
         <div className="agent-feed">
-          {pipelineEvents.length === 0 && isLoading && (
-            <p className="agent-feed-empty">Waiting for first agent to start…</p>
-          )}
-
-          {Array.from(groupedEvents.entries()).map(([phase, events]) => (
-            <section key={phase} className="agent-phase">
-              <h2 className="agent-phase-title">{PHASE_LABELS[phase] || phase}</h2>
-              {events.map((event) => {
-                const state = agentState(event);
-                const label = event.entity_name
-                  ? `${event.agent_name} — ${event.entity_name}`
-                  : event.agent_name;
-
-                return (
-                  <div key={event.key} className={`agent-row agent-row--${state}`}>
-                    <div className="agent-row-header">
-                      <div className="agent-marker">
-                        {state === 'done' ? '✓' : state === 'failed' ? '!' : state === 'active' ? '…' : '·'}
-                      </div>
-                      <div className="agent-row-body">
-                        <span className="agent-row-title">{label}</span>
-                        {event.message && state === 'active' && (
-                          <span className="agent-row-message">{event.message}</span>
-                        )}
-                        {event.duration_seconds != null && (
-                          <span className="agent-row-duration">
-                            {formatDuration(event.duration_seconds)}
-                          </span>
-                        )}
-                      </div>
-                      {state === 'active' && <div className="step-spinner" />}
-                    </div>
-
-                    {event.output && state !== 'active' && (
-                      <details className="agent-output">
-                        <summary>Agent output</summary>
-                        <pre>{formatOutput(event.output)}</pre>
-                      </details>
-                    )}
-
-                    {event.message && state === 'failed' && (
-                      <p className="agent-row-error">{event.message}</p>
+          {STAGES.map((stage) => {
+            const state = stageState(pipelineEvents, stage.id, isLoading, completed);
+            const count = latestCounts[stage.id];
+            return (
+              <div key={stage.id} className={`agent-row agent-row--${state}`}>
+                <div className="agent-row-header">
+                  <div className="agent-marker">
+                    {state === 'done' ? '✓' : state === 'failed' ? '!' : state === 'active' ? '…' : '·'}
+                  </div>
+                  <div className="agent-row-body">
+                    <span className="agent-row-title">{stage.label}</span>
+                    {typeof count === 'number' && (
+                      <span className="agent-row-message">{count} item{count === 1 ? '' : 's'}</span>
                     )}
                   </div>
-                );
-              })}
-            </section>
-          ))}
+                  {state === 'active' && <div className="step-spinner" />}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
