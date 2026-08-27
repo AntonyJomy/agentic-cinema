@@ -268,6 +268,7 @@ class FirestoreRunStore:
         payload["run_id"] = run_id
         payload["script_id"] = stored.public.run.script_id
         payload["script_title"] = stored.public.run.script_title
+        payload["script_file_url"] = stored.public.run.script_file_url
         payload["overall_status"] = stored.public.run.overall_status
         payload["reviewed_by"] = stored.public.run.reviewed_by
         payload["reviewed_at"] = stored.public.run.reviewed_at
