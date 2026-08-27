@@ -12,28 +12,38 @@ export default function AppHeader() {
         <NavLink to="/" className="app-header-brand">
           ScriptClear <span>AI</span>
         </NavLink>
-        {configured && user ? (
-          <div className="app-header-user">
-            {user.photoURL ? (
-              <img
-                className="app-header-avatar"
-                src={user.photoURL}
-                alt=""
-                referrerPolicy="no-referrer"
-              />
-            ) : null}
-            <span className="app-header-email">
-              {user.displayName || user.email}
-            </span>
-            <button
-              type="button"
-              className="app-header-signout"
-              onClick={() => signOut()}
-            >
-              Sign out
-            </button>
-          </div>
-        ) : null}
+        <div className="app-header-actions">
+          <nav className="app-header-nav" aria-label="Workspace">
+            <NavLink to="/dashboard" className="app-header-link">
+              Dashboard
+            </NavLink>
+            <NavLink to="/upload" className="app-header-link">
+              New clearance
+            </NavLink>
+          </nav>
+          {configured && user ? (
+            <div className="app-header-user">
+              {user.photoURL ? (
+                <img
+                  className="app-header-avatar"
+                  src={user.photoURL}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                />
+              ) : null}
+              <span className="app-header-email">
+                {user.displayName || user.email}
+              </span>
+              <button
+                type="button"
+                className="app-header-signout"
+                onClick={() => signOut()}
+              >
+                Sign out
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
       <ProjectorProgress />
     </header>

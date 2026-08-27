@@ -1,10 +1,13 @@
 import { useRef, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from './auth/AuthContext';
 import './Hero.css';
 
 const TOTAL_FRAMES = 240;
 const frameUrl = (n) => `/frames/ezgif-frame-${String(n).padStart(3, '0')}.jpg`;
 
 export default function Hero() {
+  const { isAuthenticated } = useAuth();
   const wrapperRef = useRef(null);
   const imgRef = useRef(null);
   const framesRef = useRef([]);
@@ -72,11 +75,17 @@ export default function Hero() {
           <h1>Clear scripts.<br />Protect stories.</h1>
           <p>
             ScriptClear AI uses an agent crew to identify legal risks, research
-            real-world evidence, and deliver insurance-ready clearance reports —
-            faster and with confidence.
+            real-world evidence, and deliver structured clearance reports for
+            human legal review.
           </p>
           <div className="cta-row">
-            <a className="btn-primary" href="/upload">See it in action</a>
+            <Link
+              className="btn-primary"
+              to={isAuthenticated ? '/dashboard' : '/login'}
+              state={isAuthenticated ? undefined : { from: '/upload' }}
+            >
+              See it in action
+            </Link>
           </div>
           <p className="scroll-hint">Scroll to explore ↓</p>
         </div>

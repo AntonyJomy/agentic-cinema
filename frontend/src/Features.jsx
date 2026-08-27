@@ -30,11 +30,6 @@ const FEATURES = [
     ),
   },
   {
-    title: 'Secure and compliant',
-    desc: 'Built on Google Cloud with IAM approval gates. Nothing ships until Legal approves.',
-    icon: <path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z" />,
-  },
-  {
     title: 'Human-in-the-loop',
     desc: 'Legal reviews flagged risks, adds context, and makes the final call.',
     icon: (
@@ -47,8 +42,8 @@ const FEATURES = [
     ),
   },
   {
-    title: 'Insurance ready',
-    desc: 'Generate clean, structured reports built for E&O insurers and legal teams.',
+    title: 'Clearance reports',
+    desc: 'Export structured reports with findings, decisions, and warnings for legal teams.',
     icon: (
       <>
         <path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z" />
@@ -56,13 +51,6 @@ const FEATURES = [
       </>
     ),
   },
-];
-
-const TRUST_ITEMS = [
-  'Google Cloud Infrastructure',
-  'IAM Approval Gates',
-  'SOC 2 Type II Compliant',
-  'Data Never Used for Model Training',
 ];
 
 export default function Features() {
@@ -84,19 +72,6 @@ export default function Features() {
             <h3>{f.title}</h3>
             <p>{f.desc}</p>
           </div>
-        ))}
-      </div>
-
-      <div className="trust-bar">
-        <div className="trust-lead">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="5" y="11" width="14" height="9" rx="2" />
-            <path d="M8 11V7a4 4 0 018 0v4" />
-          </svg>
-          Enterprise grade security
-        </div>
-        {TRUST_ITEMS.map((item) => (
-          <span className="trust-item" key={item}>{item}</span>
         ))}
       </div>
     </section>
