@@ -1,0 +1,229 @@
+.verifier {
+  margin: 20px 0 8px;
+  padding: 18px 20px;
+  background: #14141a;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+}
+
+.verifier-head {
+  margin-bottom: 14px;
+}
+
+.verifier-title {
+  margin: 0;
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: #f2efe9;
+}
+
+.verifier-sub {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8d8a83;
+  max-width: 62ch;
+}
+
+/* ---------- drop zone ---------- */
+
+.verifier-drop {
+  position: relative;
+  border: 1px dashed rgba(212, 162, 76, 0.45);
+  border-radius: 10px;
+  background: rgba(212, 162, 76, 0.03);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.verifier-drop.is-dragging {
+  background: rgba(212, 162, 76, 0.1);
+  border-color: #d4a24c;
+}
+
+.verifier-drop.is-busy {
+  opacity: 0.7;
+}
+
+/* Visually hidden but focusable, so keyboard and screen-reader users get the
+   native file picker while the label provides the large drop target. */
+.verifier-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.verifier-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 22px 16px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.verifier-input:focus-visible + .verifier-label {
+  outline: 2px solid #d4a24c;
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+.verifier-label-strong {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d4a24c;
+}
+
+.verifier-label-hint {
+  font-size: 11px;
+  color: #6b6963;
+}
+
+.verifier-filename {
+  margin: 10px 0 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: #6b6963;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- results ---------- */
+
+.verifier-status {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.verifier-result {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border-left: 3px solid transparent;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.verifier-result.is-verified {
+  border-left-color: #3f9e5a;
+  background: rgba(63, 158, 90, 0.08);
+}
+
+.verifier-result.is-mismatch {
+  border-left-color: #c8524b;
+  background: rgba(200, 82, 75, 0.08);
+}
+
+.verifier-result.is-neutral {
+  border-left-color: #6b6963;
+}
+
+.verifier-status.is-verified { color: #7fc894; }
+.verifier-status.is-mismatch { color: #e2857f; }
+.verifier-status.is-neutral  { color: #8d8a83; }
+
+.verifier-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.verifier-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.is-verified .verifier-badge { color: #7fc894; }
+.is-mismatch .verifier-badge { color: #e2857f; }
+.is-neutral  .verifier-badge { color: #a5a29b; }
+
+.verifier-reset {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: #cfcbc3;
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.verifier-reset:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #f2efe9;
+}
+
+.verifier-detail {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #e4e0d8;
+}
+
+.verifier-note {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #b9b5ad;
+}
+
+.verifier-hashes {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.verifier-hashes > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+
+.verifier-hashes dt {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b6963;
+}
+
+.verifier-hashes dd {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: #a5a29b;
+  overflow-wrap: anywhere;
+}
+
+.verifier-footnote {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #6b6963;
+  max-width: 68ch;
+}
+
+@media (max-width: 560px) {
+  .verifier-hashes > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

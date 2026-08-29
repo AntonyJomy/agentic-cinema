@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { listClearanceRuns, downloadClearancePdf } from '../api/clearanceClient';
+import {
+  listClearanceRuns,
+  downloadClearancePdf,
+  openClearancePdfPreview,
+} from '../api/clearanceClient';
+import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useAuth } from '../auth/AuthContext';
 import { useRun } from '../context/useRun';
 import { allEntitiesReviewed } from '../context/steps';
@@ -92,6 +97,10 @@ export default function DashboardPage() {
   const [openingId, setOpeningId] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [filter, setFilter] = useState('all');
+  // preview holds the in-flight or active PDF preview. `url` is a blob: URL that
+  // must be revoked when the modal closes or the component unmounts.
+  const [preview, setPreview] = useState(null);
+  const [viewingId, setViewingId] = useState(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -153,6 +162,57 @@ export default function DashboardPage() {
       setOpeningId(null);
     }
   }
+
+  async function viewPdf(runId, scriptTitle) {
+    setViewingId(runId);
+    setError(null);
+    // Show the modal immediately in a loading state so the click feels responsive.
+    setPreview({
+      runId,
+      title: scriptTitle,
+      url: null,
+      loading: true,
+      error: null,
+      reportHash: null,
+      reportSource: null,
+    });
+    try {
+      const { url, reportHash, reportSource } = await openClearancePdfPreview(runId);
+      setPreview({
+        runId,
+        title: scriptTitle,
+        url,
+        loading: false,
+        error: null,
+        reportHash,
+        reportSource,
+      });
+    } catch (err) {
+      setPreview({
+        runId,
+        title: scriptTitle,
+        url: null,
+        loading: false,
+        error: err instanceof Error ? err.message : 'Could not open this report.',
+        reportHash: null,
+        reportSource: null,
+      });
+    } finally {
+      setViewingId(null);
+    }
+  }
+
+  function closePreview() {
+    setPreview(null);
+  }
+
+  // Single owner of blob lifetime: revokes the previous URL whenever it changes
+  // and on unmount, so closing the modal or leaving the page frees the bytes.
+  useEffect(() => {
+    const activeUrl = preview?.url;
+    if (!activeUrl) return undefined;
+    return () => URL.revokeObjectURL(activeUrl);
+  }, [preview?.url]);
 
   async function downloadPdf(runId, scriptTitle) {
     setDownloadingId(runId);
@@ -295,7 +355,7 @@ export default function DashboardPage() {
                   <th>Entities</th>
                   <th>Risk spread</th>
                   <th>Status</th>
-                  <th>PDF</th>
+                  <th>Report</th>
                 </tr>
               </thead>
               <tbody>
@@ -329,14 +389,24 @@ export default function DashboardPage() {
                         </button>
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="desk-download"
-                          disabled={downloadingId === row.run_id}
-                          onClick={() => downloadPdf(row.run_id, titleOf(row))}
-                        >
-                          {downloadingId === row.run_id ? 'Saving…' : 'Download'}
-                        </button>
+                        <div className="desk-report-actions">
+                          <button
+                            type="button"
+                            className="desk-download"
+                            disabled={viewingId === row.run_id}
+                            onClick={() => viewPdf(row.run_id, titleOf(row))}
+                          >
+                            {viewingId === row.run_id ? 'Opening…' : 'View'}
+                          </button>
+                          <button
+                            type="button"
+                            className="desk-download"
+                            disabled={downloadingId === row.run_id}
+                            onClick={() => downloadPdf(row.run_id, titleOf(row))}
+                          >
+                            {downloadingId === row.run_id ? 'Saving…' : 'Download'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -352,6 +422,21 @@ export default function DashboardPage() {
           + New clearance run
         </Link>
       </div>
+
+      {preview ? (
+        <PdfPreviewModal
+          title={preview.title}
+          url={preview.url}
+          loading={preview.loading}
+          error={preview.error}
+          reportHash={preview.reportHash}
+          reportSource={preview.reportSource}
+          onClose={closePreview}
+          onDownload={
+            preview.url ? () => downloadPdf(preview.runId, preview.title) : undefined
+          }
+        />
+      ) : null}
     </div>
   );
 }

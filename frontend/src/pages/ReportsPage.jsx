@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRun } from '../context/useRun';
 import { downloadClearancePdf } from '../api/clearanceClient';
 import { isSafeHttpUrl } from '../api/safeUrl';
+import ReportVerifier from '../components/ReportVerifier';
 import '../styles/shared.css';
 import './ReportsPage.css';
 
@@ -331,6 +332,11 @@ export default function ReportsPage() {
         </span>
       </div>
       {pdfError ? <p className="report-pdf-error no-print">{pdfError}</p> : null}
+
+      <ReportVerifier
+        expectedHash={run.report_hash}
+        signedOffAt={run.reviewed_at}
+      />
 
       <article ref={reportRef} className="clearance-report panel">
         <header className="report-cover">

@@ -246,7 +246,15 @@ export async function listClearanceRuns({ signal } = {}) {
   return payload.runs;
 }
 
-export async function downloadClearancePdf(runId, { signal, filename } = {}) {
+/**
+ * Fetch the clearance report PDF for a run.
+ *
+ * The endpoint requires an Authorization header, so the bytes must be fetched
+ * here rather than pointed at directly from an <iframe> or <a href>. Returns the
+ * validated blob plus the server-suggested filename and the SHA-256 recorded at
+ * sign-off, so callers can download it, preview it, or verify it.
+ */
+async function fetchClearancePdf(runId, { signal } = {}) {
   let response;
   try {
     response = await fetch(
@@ -266,9 +274,9 @@ export async function downloadClearancePdf(runId, { signal, filename } = {}) {
 
   const blob = await response.blob();
   if (!blob || blob.size < 5) {
-    throw new Error('The PDF download was empty.');
+    throw new Error('The PDF was empty.');
   }
-  // Guard against error JSON being saved as a ".pdf"
+  // Guard against error JSON being surfaced as a ".pdf"
   const head = await blob.slice(0, 5).text();
   if (head !== '%PDF-') {
     throw new Error('The server did not return a valid PDF.');
@@ -276,7 +284,40 @@ export async function downloadClearancePdf(runId, { signal, filename } = {}) {
 
   const disposition = response.headers.get('Content-Disposition') || '';
   const match = disposition.match(/filename="([^"]+)"/i);
-  const downloadName = filename || match?.[1] || 'clearance_report.pdf';
+
+  return {
+    blob,
+    suggestedFilename: match?.[1] || 'clearance_report.pdf',
+    // Present only when the stored artifact was served. A regenerated copy
+    // deliberately carries no digest, because rebuilding the PDF changes its
+    // bytes and comparing against the sign-off hash would false-flag a mismatch.
+    reportHash: response.headers.get('X-Report-SHA256') || null,
+    // 'storage' | 'regenerated' | null
+    reportSource: response.headers.get('X-Report-Source') || null,
+  };
+}
+
+/**
+ * Load a report as an object URL for inline preview.
+ *
+ * The caller owns the returned url and MUST call URL.revokeObjectURL on it when
+ * the preview closes, otherwise the blob is retained for the page's lifetime.
+ */
+export async function openClearancePdfPreview(runId, { signal } = {}) {
+  const { blob, suggestedFilename, reportHash, reportSource } =
+    await fetchClearancePdf(runId, { signal });
+  return {
+    url: URL.createObjectURL(blob),
+    suggestedFilename,
+    reportHash,
+    reportSource,
+    sizeBytes: blob.size,
+  };
+}
+
+export async function downloadClearancePdf(runId, { signal, filename } = {}) {
+  const { blob, suggestedFilename } = await fetchClearancePdf(runId, { signal });
+  const downloadName = filename || suggestedFilename;
 
   const objectUrl = URL.createObjectURL(blob);
   try {
