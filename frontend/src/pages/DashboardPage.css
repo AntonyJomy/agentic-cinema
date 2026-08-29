@@ -412,6 +412,12 @@
   cursor: wait;
 }
 
+.desk-report-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .desk-cta {
   display: flex;
   justify-content: center;

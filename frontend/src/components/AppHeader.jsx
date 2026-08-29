@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
 import ProjectorProgress from './ProjectorProgress';
+import AccountDropdown from './AccountDropdown';
 import { useAuth } from '../auth/AuthContext';
 import './AppHeader.css';
 
-export default function AppHeader() {
-  const { configured, user, signOut } = useAuth();
+export default function AppHeader({ tourState }) {
+  const { configured } = useAuth();
 
   return (
     <header className="app-header">
@@ -21,28 +22,7 @@ export default function AppHeader() {
               New clearance
             </NavLink>
           </nav>
-          {configured && user ? (
-            <div className="app-header-user">
-              {user.photoURL ? (
-                <img
-                  className="app-header-avatar"
-                  src={user.photoURL}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                />
-              ) : null}
-              <span className="app-header-email">
-                {user.displayName || user.email}
-              </span>
-              <button
-                type="button"
-                className="app-header-signout"
-                onClick={() => signOut()}
-              >
-                Sign out
-              </button>
-            </div>
-          ) : null}
+          {configured && <AccountDropdown tourState={tourState} />}
         </div>
       </div>
       <ProjectorProgress />
