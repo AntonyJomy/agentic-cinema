@@ -1,0 +1,152 @@
+.service-card {
+  display: grid;
+  grid-template-columns: 260px 1fr 220px;
+  gap: 48px;
+  align-items: start;
+  padding: 40px 0;
+  border-top: 1px solid #1E1F22;
+  perspective: 1000px;
+  position: sticky;
+  top: 90px;
+  background: #0B0B0C;
+  transform-origin: top center;
+  will-change: transform;
+}
+
+.service-card:last-child {
+  border-bottom: 1px solid #1E1F22;
+}
+
+/* Alternating layout: every other block mirrors, so the visual panel
+   zig-zags left/right down the section instead of always sitting on the
+   same side. Column widths swap along with it so the visual keeps its own
+   sizing rather than being squeezed into the capabilities column's width. */
+.service-card--reverse {
+  grid-template-columns: 220px 1fr 260px;
+}
+
+.service-card--reverse .service-visual {
+  order: 3;
+}
+
+.service-card--reverse .service-body {
+  order: 2;
+}
+
+.service-card--reverse .service-capabilities {
+  order: 1;
+}
+
+.service-visual {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  background:
+    linear-gradient(160deg, rgba(212, 162, 76, 0.22), rgba(212, 162, 76, 0.03)),
+    #131315;
+  border: 1px solid #1E1F22;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.service-visual::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--spot-x, 50%) var(--spot-y, 50%),
+    rgba(212, 162, 76, 0.22),
+    transparent 60%
+  );
+  opacity: var(--spot-opacity, 0);
+  transition: opacity 0.3s ease;
+}
+
+.service-index {
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 800;
+  font-size: 22px;
+  color: #F2F0EA;
+}
+
+.service-visual-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #D4A24C;
+}
+
+.service-title {
+  margin: 0 0 14px;
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.2;
+  color: #F2F0EA;
+  max-width: 420px;
+}
+
+.service-description {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: #A6A49C;
+  max-width: 480px;
+}
+
+.service-capabilities-label {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: #57554F;
+  margin-bottom: 12px;
+}
+
+.service-capabilities ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.service-capabilities li {
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  color: #8B8A85;
+}
+
+@media (max-width: 960px) {
+  .service-card,
+  .service-card--reverse {
+    grid-template-columns: 160px 1fr;
+  }
+  .service-capabilities {
+    grid-column: 1 / -1;
+  }
+  /* The zig-zag reads as clutter at this width — everyone stacks the same
+     way, image first, regardless of which block it is. */
+  .service-card--reverse .service-visual,
+  .service-card--reverse .service-body,
+  .service-card--reverse .service-capabilities {
+    order: initial;
+  }
+}
+
+@media (max-width: 640px) {
+  .service-card,
+  .service-card--reverse {
+    grid-template-columns: 1fr;
+  }
+  .service-visual {
+    aspect-ratio: 16 / 9;
+  }
+}

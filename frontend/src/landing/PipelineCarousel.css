@@ -1,0 +1,80 @@
+.pipeline-carousel {
+  display: flex;
+  justify-content: center;
+}
+
+.carousel-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 48px;
+  max-width: 480px;
+}
+
+.carousel-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.carousel-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid rgba(212, 162, 76, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: #D4A24C;
+  margin-bottom: 8px;
+}
+
+.carousel-title {
+  margin: 0;
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: #F2F0EA;
+}
+
+.carousel-subtitle {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #A6A49C;
+}
+
+.carousel-controls {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 16px;
+}
+
+.carousel-controls button {
+  background: transparent;
+  border: 1px solid #1E1F22;
+  color: #F2F0EA;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.carousel-controls button:hover {
+  border-color: #D4A24C;
+  color: #D4A24C;
+}
+
+.carousel-position {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #57554F;
+}

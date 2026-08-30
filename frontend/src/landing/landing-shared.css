@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+.landing {
+  background: #0B0B0C;
+  color: #F2F0EA;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .landing,
+  .landing * {
+    cursor: none;
+  }
+}
+
+/* The "● LABEL" section marker used throughout — every major section opens
+   with one, matching Palomino's own structural convention. */
+.section-marker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #A6A49C;
+  margin-bottom: 32px;
+}
+
+.section-marker::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #D4A24C;
+  flex: none;
+}
+
+.landing-section {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 96px 48px;
+}
+
+@media (max-width: 860px) {
+  .landing-section {
+    padding: 72px 24px;
+  }
+}
