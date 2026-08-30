@@ -87,6 +87,13 @@ from agents.trademark_brand_specialist import (
 
 from schemas.entities import Entities, Entity, EntityType, ScriptLocation
 from schemas.research_result import ResearchResult, ResearchStatus
+from research.cache import (
+    adapt_research_for_entity,
+    entity_cache_key,
+    is_cacheable_research,
+    research_cache_enabled,
+)
+from research.store import get_research_cache
 from schemas.risk_result import RiskLevel, RiskResult
 from schemas.summary_result import SummaryResult
 from schemas.legal_review import LegalReviewPackage
@@ -552,10 +559,13 @@ async def process_entity(
     entity_index: int,
     total_entities: int,
     on_progress: ProgressCallback | None = None,
+    session_cache: Dict[str, ResearchResult] | None = None,
+    session_locks: Dict[str, asyncio.Lock] | None = None,
 ) -> EntityResult:
     """Process a single entity with its specialist agent."""
     agent_id = f"specialist_{entity.entity_type.value}_{entity.entity_id[:8]}"
     start_time = time.perf_counter()
+    cache_key = entity_cache_key(entity.entity_type, entity.name)
 
     await _emit_progress(
         on_progress,
@@ -633,11 +643,57 @@ async def process_entity(
             return None
         return ResearchResult.model_validate(raw_result)
 
+    async def _resolve_research() -> ResearchResult | None:
+        """Return cached research or run the specialist (with within-run dedup)."""
+
+        def _adapt(cached: ResearchResult) -> ResearchResult:
+            return adapt_research_for_entity(cached, entity)
+
+        async def _lookup_persistent() -> ResearchResult | None:
+            if not research_cache_enabled():
+                return None
+            cached = get_research_cache().lookup(entity.entity_type, entity.name)
+            if cached is None:
+                return None
+            print(f"  Research cache HIT (persistent): {cache_key}")
+            return cached
+
+        async def _run_specialist() -> ResearchResult | None:
+            result = await _retry_on_transient(
+                _run_specialist_once,
+                label=f"{specialist_config.display_name} ({entity.name})",
+            )
+            if result and is_cacheable_research(result):
+                generic = result.model_copy(update={"entity_id": None})
+                if research_cache_enabled():
+                    get_research_cache().upsert(
+                        entity.entity_type,
+                        entity.name,
+                        generic,
+                    )
+                if session_cache is not None:
+                    session_cache[cache_key] = generic
+            return result
+
+        if session_cache is not None and session_locks is not None:
+            lock = session_locks.setdefault(cache_key, asyncio.Lock())
+            async with lock:
+                if cache_key in session_cache:
+                    print(f"  Research cache HIT (session): {cache_key}")
+                    return _adapt(session_cache[cache_key])
+                cached = await _lookup_persistent()
+                if cached is not None:
+                    session_cache[cache_key] = cached
+                    return _adapt(cached)
+                return await _run_specialist()
+
+        cached = await _lookup_persistent()
+        if cached is not None:
+            return _adapt(cached)
+        return await _run_specialist()
+
     try:
-        research_result = await _retry_on_transient(
-            _run_specialist_once,
-            label=f"{specialist_config.display_name} ({entity.name})",
-        )
+        research_result = await _resolve_research()
 
         processing_time = time.perf_counter() - start_time
         
@@ -787,6 +843,8 @@ async def process_entities(
         f"(concurrency limit={concurrency})..."
     )
     semaphore = asyncio.Semaphore(concurrency)
+    session_cache: Dict[str, ResearchResult] = {}
+    session_locks: Dict[str, asyncio.Lock] = {}
 
     async def run_one(
         index: int,
@@ -801,6 +859,8 @@ async def process_entities(
                 entity_index=index,
                 total_entities=total_to_process,
                 on_progress=on_progress,
+                session_cache=session_cache,
+                session_locks=session_locks,
             )
 
     gathered = await asyncio.gather(
