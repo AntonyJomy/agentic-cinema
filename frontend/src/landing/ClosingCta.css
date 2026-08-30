@@ -1,0 +1,33 @@
+.closing-cta {
+  padding-top: 140px;
+  padding-bottom: 140px;
+  text-align: center;
+}
+
+.closing-title {
+  margin: 0 0 40px;
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 800;
+  font-size: clamp(40px, 7vw, 92px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  color: #F2F0EA;
+}
+
+.closing-cta-button {
+  display: inline-block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  color: #0B0B0C;
+  background: #F2F0EA;
+  padding: 16px 32px;
+  text-decoration: none;
+  transition: background 0.2s ease, color 0.2s ease;
+  will-change: transform;
+}
+
+.closing-cta-button:hover {
+  background: #D4A24C;
+  color: #0B0B0C;
+}

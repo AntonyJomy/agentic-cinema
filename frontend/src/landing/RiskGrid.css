@@ -1,0 +1,72 @@
+.risk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px;
+  perspective: 1200px;
+}
+
+.risk-tile {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  border: 1px solid #1E1F22;
+  background: rgba(19, 19, 21, 0.7);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  will-change: transform;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.risk-tile:hover {
+  border-color: rgba(212, 162, 76, 0.45);
+  background: rgba(212, 162, 76, 0.06);
+}
+
+.risk-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--spot-x, 50%) var(--spot-y, 50%),
+    rgba(212, 162, 76, 0.18),
+    transparent 60%
+  );
+  opacity: var(--spot-opacity, 0);
+  transition: opacity 0.3s ease;
+}
+
+.risk-tile-index {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #D4A24C;
+  opacity: 0.75;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.risk-tile-label {
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.2;
+  color: #F2F0EA;
+  transition: transform 0.25s ease;
+}
+
+.risk-tile:hover .risk-tile-index {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.risk-tile:hover .risk-tile-label {
+  transform: translateY(-3px);
+}
+
+@media (max-width: 720px) {
+  .risk-tile {
+    margin-top: 0 !important;
+  }
+}
