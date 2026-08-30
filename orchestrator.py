@@ -87,6 +87,20 @@ from agents.trademark_brand_specialist import (
 
 from schemas.entities import Entities, Entity, EntityType, ScriptLocation
 from schemas.research_result import ResearchResult, ResearchStatus
+from research.cache import (
+    adapt_research_for_entity,
+    entity_cache_key,
+    is_cacheable_research,
+    research_cache_enabled,
+)
+from research.retrieval import (
+    build_rag_prompt_context,
+    index_research_result,
+    retrieve_similar_research,
+)
+from research.metrics import ResearchMetrics, ResearchSource, get_research_metrics
+from research.rag_llm import synthesize_rag_result
+from research.store import get_research_cache
 from schemas.risk_result import RiskLevel, RiskResult
 from schemas.summary_result import SummaryResult
 from schemas.legal_review import LegalReviewPackage
@@ -125,6 +139,7 @@ class EntityResult:
     success: bool
     error: Optional[str] = None
     risk_result: Optional[RiskResult] = None
+    research_source: str | None = None
 
 
 @dataclass
@@ -262,10 +277,13 @@ def _grounding_output(
 
 def _specialist_output(entity_result: EntityResult) -> dict:
     research = entity_result.research_result
-    return {
+    output = {
         "success": entity_result.success,
         "citation_count": len(research.citations) if research else 0,
     }
+    if entity_result.research_source:
+        output["research_source"] = entity_result.research_source
+    return output
 
 
 def _risk_scoring_output(risk_result: RiskResult) -> dict:
@@ -552,10 +570,14 @@ async def process_entity(
     entity_index: int,
     total_entities: int,
     on_progress: ProgressCallback | None = None,
+    session_cache: Dict[str, ResearchResult] | None = None,
+    session_locks: Dict[str, asyncio.Lock] | None = None,
+    research_metrics: ResearchMetrics | None = None,
 ) -> EntityResult:
     """Process a single entity with its specialist agent."""
     agent_id = f"specialist_{entity.entity_type.value}_{entity.entity_id[:8]}"
     start_time = time.perf_counter()
+    cache_key = entity_cache_key(entity.entity_type, entity.name)
 
     await _emit_progress(
         on_progress,
@@ -576,13 +598,15 @@ async def process_entity(
     print(f"  Name: {entity.name}")
     print(f"  Context: {entity.context[:60]}..." if entity.context else "  Context: None")
 
-    prompt = (
+    base_prompt = (
         f"Research the following screenplay Entity. "
         f"entity_type must be treated as {entity.entity_type.value}.\n\n"
         f"{entity.model_dump_json(indent=2)}"
     )
+    rag_prompt_prefix = ""
 
     async def _run_specialist_once() -> ResearchResult | None:
+        prompt = f"{rag_prompt_prefix}{base_prompt}"
         app_name = (
             f"orchestrator_{entity.entity_type.value}_{entity_index}_"
             f"{int(time.perf_counter() * 1000)}"
@@ -633,11 +657,139 @@ async def process_entity(
             return None
         return ResearchResult.model_validate(raw_result)
 
-    try:
-        research_result = await _retry_on_transient(
-            _run_specialist_once,
-            label=f"{specialist_config.display_name} ({entity.name})",
+    async def _resolve_research() -> tuple[ResearchResult | None, ResearchSource | None]:
+        """Return cached research or run the specialist (with within-run dedup)."""
+
+        nonlocal rag_prompt_prefix
+        metrics = research_metrics or get_research_metrics()
+
+        def _adapt(cached: ResearchResult) -> ResearchResult:
+            return adapt_research_for_entity(cached, entity)
+
+        def _store_research(generic: ResearchResult) -> bool:
+            """
+            Store research in cache and vector index.
+            Returns True if fully successful, False if RAG indexing failed.
+            """
+            rag_indexed = False
+            if research_cache_enabled():
+                get_research_cache().upsert(
+                    entity.entity_type,
+                    entity.name,
+                    generic,
+                )
+            try:
+                rag_indexed = index_research_result(
+                    entity.entity_type,
+                    entity.name,
+                    generic,
+                    context=entity.context,
+                )
+            except Exception as e:
+                # Critical errors (dimension mismatch) should not be silently ignored
+                logger.error(
+                    "RAG indexing failed critically for %s: %s. "
+                    "This may affect future semantic searches.",
+                    entity.name,
+                    e,
+                )
+                # Don't let RAG indexing failures break the entire pipeline
+                rag_indexed = False
+            if session_cache is not None:
+                session_cache[cache_key] = generic
+            return rag_indexed
+
+        async def _lookup_persistent() -> ResearchResult | None:
+            if not research_cache_enabled():
+                return None
+            cached = get_research_cache().lookup(entity.entity_type, entity.name)
+            if cached is None:
+                return None
+            print(f"  Research cache HIT (persistent): {cache_key}")
+            return cached
+
+        async def _lookup_rag() -> ResearchResult | None:
+            nonlocal rag_prompt_prefix
+            match = await retrieve_similar_research(entity)
+            if match is None:
+                return None
+            if match.tier == "high":
+                print(
+                    f"  Research RAG HIT (high {match.score:.2f}): "
+                    f"{match.source_name} -> {entity.name}"
+                )
+                synthesized = await synthesize_rag_result(
+                    entity,
+                    match.result,
+                    source_name=match.source_name,
+                )
+                generic = synthesized.model_copy(update={"entity_id": None})
+                _store_research(generic)
+                metrics.record(ResearchSource.RAG_HIGH)
+                return generic
+            print(
+                f"  Research RAG HIT (medium {match.score:.2f}): "
+                f"augmenting prompt from {match.source_name}"
+            )
+            rag_prompt_prefix = build_rag_prompt_context(match)
+            return None
+
+        async def _run_specialist() -> ResearchResult | None:
+            had_rag_context = bool(rag_prompt_prefix)
+            result = await _retry_on_transient(
+                _run_specialist_once,
+                label=f"{specialist_config.display_name} ({entity.name})",
+            )
+            if result and is_cacheable_research(result):
+                generic = result.model_copy(update={"entity_id": None})
+                _store_research(generic)
+            metrics.record(
+                ResearchSource.RAG_MEDIUM_PARALLEL
+                if had_rag_context
+                else ResearchSource.PARALLEL
+            )
+            return result
+
+        if session_cache is not None and session_locks is not None:
+            lock = session_locks.setdefault(cache_key, asyncio.Lock())
+            async with lock:
+                if cache_key in session_cache:
+                    print(f"  Research cache HIT (session): {cache_key}")
+                    metrics.record(ResearchSource.SESSION_CACHE)
+                    return _adapt(session_cache[cache_key]), ResearchSource.SESSION_CACHE
+                cached = await _lookup_persistent()
+                if cached is not None:
+                    session_cache[cache_key] = cached
+                    metrics.record(ResearchSource.PERSISTENT_CACHE)
+                    return _adapt(cached), ResearchSource.PERSISTENT_CACHE
+                rag_hit = await _lookup_rag()
+                if rag_hit is not None:
+                    return _adapt(rag_hit), ResearchSource.RAG_HIGH
+                result = await _run_specialist()
+                source = (
+                    ResearchSource.RAG_MEDIUM_PARALLEL
+                    if rag_prompt_prefix
+                    else ResearchSource.PARALLEL
+                )
+                return result, source
+
+        cached = await _lookup_persistent()
+        if cached is not None:
+            metrics.record(ResearchSource.PERSISTENT_CACHE)
+            return _adapt(cached), ResearchSource.PERSISTENT_CACHE
+        rag_hit = await _lookup_rag()
+        if rag_hit is not None:
+            return _adapt(rag_hit), ResearchSource.RAG_HIGH
+        result = await _run_specialist()
+        source = (
+            ResearchSource.RAG_MEDIUM_PARALLEL
+            if rag_prompt_prefix
+            else ResearchSource.PARALLEL
         )
+        return result, source
+
+    try:
+        research_result, research_source = await _resolve_research()
 
         processing_time = time.perf_counter() - start_time
         
@@ -656,7 +808,8 @@ async def process_entity(
             specialist_config=specialist_config,
             processing_time=processing_time,
             success=success,
-            error=None
+            error=None,
+            research_source=research_source.value if research_source else None,
         )
         duration = time.perf_counter() - start_time
         await _emit_progress(
@@ -696,7 +849,10 @@ async def process_entity(
             processing_time=processing_time,
             success=False,
             error=error_message,
+            research_source=ResearchSource.FAILED.value,
         )
+        metrics = research_metrics or get_research_metrics()
+        metrics.record(ResearchSource.FAILED)
         duration = time.perf_counter() - start_time
         await _emit_progress(
             on_progress,
@@ -787,6 +943,9 @@ async def process_entities(
         f"(concurrency limit={concurrency})..."
     )
     semaphore = asyncio.Semaphore(concurrency)
+    session_cache: Dict[str, ResearchResult] = {}
+    session_locks: Dict[str, asyncio.Lock] = {}
+    research_metrics = get_research_metrics()
 
     async def run_one(
         index: int,
@@ -801,6 +960,9 @@ async def process_entities(
                 entity_index=index,
                 total_entities=total_to_process,
                 on_progress=on_progress,
+                session_cache=session_cache,
+                session_locks=session_locks,
+                research_metrics=research_metrics,
             )
 
     gathered = await asyncio.gather(
@@ -822,6 +984,10 @@ async def process_entities(
         if entity_type in entities_by_type:
             count = len(entities_by_type[entity_type])
             print(f"\n⚠️  WARNING: {entity_type.value} entities ({count} found) - no specialist implemented yet")
+
+    for line in research_metrics.summary_lines():
+        print(line)
+    research_metrics.log_summary()
     
     return results
 

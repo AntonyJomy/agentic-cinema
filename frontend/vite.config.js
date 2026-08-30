@@ -5,8 +5,10 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: '127.0.0.1',
+    // Firebase Auth allows localhost by default; 127.0.0.1 triggers auth/unauthorized-domain.
+    host: 'localhost',
     port: 5173,
+    strictPort: true,
     proxy: {
       '/clearance': {
         target: 'http://127.0.0.1:8000',
