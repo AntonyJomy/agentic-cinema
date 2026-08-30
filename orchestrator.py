@@ -666,21 +666,38 @@ async def process_entity(
         def _adapt(cached: ResearchResult) -> ResearchResult:
             return adapt_research_for_entity(cached, entity)
 
-        def _store_research(generic: ResearchResult) -> None:
+        def _store_research(generic: ResearchResult) -> bool:
+            """
+            Store research in cache and vector index.
+            Returns True if fully successful, False if RAG indexing failed.
+            """
+            rag_indexed = False
             if research_cache_enabled():
                 get_research_cache().upsert(
                     entity.entity_type,
                     entity.name,
                     generic,
                 )
-            index_research_result(
-                entity.entity_type,
-                entity.name,
-                generic,
-                context=entity.context,
-            )
+            try:
+                rag_indexed = index_research_result(
+                    entity.entity_type,
+                    entity.name,
+                    generic,
+                    context=entity.context,
+                )
+            except Exception as e:
+                # Critical errors (dimension mismatch) should not be silently ignored
+                logger.error(
+                    "RAG indexing failed critically for %s: %s. "
+                    "This may affect future semantic searches.",
+                    entity.name,
+                    e,
+                )
+                # Don't let RAG indexing failures break the entire pipeline
+                rag_indexed = False
             if session_cache is not None:
                 session_cache[cache_key] = generic
+            return rag_indexed
 
         async def _lookup_persistent() -> ResearchResult | None:
             if not research_cache_enabled():

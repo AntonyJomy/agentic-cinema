@@ -5,7 +5,7 @@ Vector index for semantic research retrieval.
 
 Backends:
   - memory: in-process cosine search (tests and dev)
-  - firestore: entity_research_vectors collection with brute-force search
+  - firestore: entity_research_vectors collection with native vector search
   - auto: try Firestore, fall back to memory
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing import Protocol
 from api.settings import firestore_database, firestore_project
 from research.cache import entity_cache_key, is_cache_entry_fresh
 from research.embeddings import cosine_similarity
-from research.rag_config import research_rag_top_k
+from research.rag_config import research_rag_top_k, research_embedding_dimensionality
 from schemas.entities import EntityType
 from schemas.research_result import ResearchResult
 
@@ -168,13 +168,29 @@ class FirestoreResearchVectorStore:
     ) -> None:
         key = entity_cache_key(entity_type, name)
         now = datetime.now(timezone.utc).isoformat()
+        
+        # Validate embedding dimensions before attempting to store
+        expected_dim = research_embedding_dimensionality()
+        if len(embedding) != expected_dim:
+            raise ValueError(
+                f"Embedding dimension mismatch: expected {expected_dim}, got {len(embedding)}. "
+                f"Cannot store in Firestore (max 2048 dimensions)."
+            )
+        
+        # Store as Vector for native vector search support
         stored_embedding = embedding
         try:
             from google.cloud.firestore_v1.vector import Vector
-
             stored_embedding = Vector(embedding)
-        except Exception:
+        except Exception as e:
+            # Re-raise if this is a dimension error (likely the root cause)
+            if "dimension" in str(e).lower():
+                logger.error("Firestore Vector dimension error for %s: %s", key, e)
+                raise
+            # Fall back to list if Vector import fails for other reasons
+            logger.warning("Vector import failed, storing as list: %s", e)
             stored_embedding = embedding
+        
         payload = {
             "cache_key": key,
             "entity_type": entity_type.value,
@@ -184,7 +200,28 @@ class FirestoreResearchVectorStore:
             "context_snippet": (context or "")[:500] or None,
             "indexed_at": now,
         }
-        self._collection.document(key).set(payload)
+        
+        try:
+            self._collection.document(key).set(payload)
+            logger.debug("Successfully indexed vector for %s (%d dims)", key, len(embedding))
+        except Exception as e:
+            # Surface dimension errors explicitly
+            error_msg = str(e).lower()
+            if "dimension" in error_msg or "2048" in error_msg or "invalid" in error_msg:
+                logger.error(
+                    "Failed to upsert vector for %s: %s. "
+                    "Embedding has %d dimensions, Firestore supports max 2048.",
+                    key,
+                    e,
+                    len(embedding),
+                )
+                raise RuntimeError(
+                    f"Firestore vector upsert failed for {name}: {e}. "
+                    f"Check embedding dimensionality ({len(embedding)} dims)."
+                ) from e
+            # Re-raise other errors
+            logger.error("Firestore upsert failed for %s: %s", key, e)
+            raise
 
     def search(
         self,
@@ -223,6 +260,17 @@ class FirestoreResearchVectorStore:
             from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
             from google.cloud.firestore_v1.vector import Vector
 
+            # Validate query dimensions
+            expected_dim = research_embedding_dimensionality()
+            if len(query_embedding) != expected_dim:
+                logger.error(
+                    "Query embedding dimension mismatch: expected %d, got %d. "
+                    "Native vector search will fail.",
+                    expected_dim,
+                    len(query_embedding),
+                )
+                return None
+
             vector_query = (
                 self._collection.where("entity_type", "==", entity_type.value)
                 .find_nearest(
@@ -258,12 +306,28 @@ class FirestoreResearchVectorStore:
                     )
                 )
             hits.sort(key=lambda hit: hit.score, reverse=True)
-            return hits[:limit]
-        except Exception:
-            logger.warning(
-                "Firestore native vector search unavailable; using brute-force scan.",
-                exc_info=True,
+            logger.debug(
+                "Native vector search returned %d hits for %s",
+                len(hits[:limit]),
+                entity_type.value,
             )
+            return hits[:limit]
+        except Exception as e:
+            # Log dimension-related errors more explicitly
+            error_msg = str(e).lower()
+            if "dimension" in error_msg or "2048" in error_msg or "invalid" in error_msg:
+                logger.error(
+                    "Firestore native vector search failed due to dimension mismatch: %s. "
+                    "Query has %d dimensions. Falling back to brute-force scan.",
+                    e,
+                    len(query_embedding),
+                    exc_info=True,
+                )
+            else:
+                logger.warning(
+                    "Firestore native vector search unavailable; using brute-force scan.",
+                    exc_info=True,
+                )
             return None
 
     def _search_brute_force(

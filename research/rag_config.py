@@ -45,6 +45,17 @@ def research_embedding_backend() -> str:
     return os.getenv("RESEARCH_EMBEDDING_BACKEND", "gemini").strip().lower()
 
 
+def research_embedding_dimensionality() -> int:
+    """Target embedding dimensionality for Firestore vector storage (max 2048)."""
+    raw = os.getenv("RESEARCH_EMBEDDING_DIMENSIONALITY", "1536").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 1536
+    # Firestore has a hard limit of 2048 dimensions for native vector search
+    return max(1, min(2048, value))
+
+
 def build_rag_query_text(entity: Entity) -> str:
     """Text embedded when looking up similar past research."""
     context = (entity.context or "").strip()
