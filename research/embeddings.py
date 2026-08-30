@@ -17,7 +17,7 @@ import re
 import threading
 from typing import Protocol
 
-from research.rag_config import research_embedding_backend, research_embedding_model
+from research.rag_config import research_embedding_backend, research_embedding_model, research_embedding_dimensionality
 
 logger = logging.getLogger("agentic_cinema.research_rag")
 
@@ -50,9 +50,14 @@ class GeminiEmbeddingProvider:
 
     def embed(self, text: str) -> list[float]:
         client = self._get_client()
+        target_dim = research_embedding_dimensionality()
+        
+        # Request reduced dimensionality to fit Firestore's 2048-dim limit
+        # Gemini models support output_dimensionality via Matryoshka Representation Learning
         response = client.models.embed_content(
             model=research_embedding_model(),
             contents=(text or "").strip() or " ",
+            config={"output_dimensionality": target_dim},
         )
         embeddings = getattr(response, "embeddings", None) or []
         if not embeddings:
@@ -60,7 +65,21 @@ class GeminiEmbeddingProvider:
         values = getattr(embeddings[0], "values", None)
         if not values:
             raise RuntimeError("Embedding API returned empty vector")
-        return [float(v) for v in values]
+        
+        vector = [float(v) for v in values]
+        
+        # L2 normalize when using non-default dimensionality
+        # (only full 3072-dim output from Gemini is pre-normalized)
+        if len(vector) != 3072:
+            norm = math.sqrt(sum(v * v for v in vector))
+            if norm > 0:
+                vector = [v / norm for v in vector]
+                logger.debug(
+                    "L2 normalized embedding vector (%d dims) for Firestore compatibility",
+                    len(vector),
+                )
+        
+        return vector
 
 
 class TestEmbeddingProvider:
@@ -104,7 +123,18 @@ def reset_embedding_provider_for_tests(provider: EmbeddingProvider | None = None
 
 
 def embed_text(text: str) -> list[float]:
-    return get_embedding_provider().embed(text)
+    """Generate embedding vector at configured dimensionality for Firestore."""
+    embedding = get_embedding_provider().embed(text)
+    
+    expected_dim = research_embedding_dimensionality()
+    if len(embedding) != expected_dim:
+        logger.warning(
+            "Embedding dimension mismatch: expected %d, got %d",
+            expected_dim,
+            len(embedding),
+        )
+    
+    return embedding
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:

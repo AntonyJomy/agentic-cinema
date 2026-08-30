@@ -51,10 +51,19 @@ def index_research_result(
     result: ResearchResult,
     *,
     context: str | None = None,
-) -> None:
-    """Embed and store research for future semantic retrieval."""
+) -> bool:
+    """
+    Embed and store research for future semantic retrieval.
+    
+    Returns:
+        True if indexing succeeded, False if it failed.
+        
+    Raises:
+        Exception: Critical errors (dimension mismatches, config issues) are raised
+                   to surface them rather than silent failure.
+    """
     if not research_rag_enabled() or not is_cacheable_research(result):
-        return
+        return False
     try:
         document_text = build_rag_document_text(entity_type, name, result, context=context)
         embedding = embed_text(document_text)
@@ -66,8 +75,35 @@ def index_research_result(
             generic,
             context=context,
         )
-    except Exception:
-        logger.warning("Failed to index research for RAG (%s)", name, exc_info=True)
+        logger.info("Successfully indexed research for RAG: %s", name)
+        return True
+    except (ValueError, RuntimeError) as e:
+        # Dimension errors and configuration issues should be raised
+        # so they don't get masked as SUCCESS in the pipeline
+        error_msg = str(e).lower()
+        if "dimension" in error_msg or "2048" in error_msg or "invalid" in error_msg:
+            logger.error(
+                "RAG indexing failed for %s due to dimension mismatch: %s. "
+                "This indicates a configuration issue that must be fixed.",
+                name,
+                e,
+            )
+            raise RuntimeError(
+                f"Failed to index research for RAG ({name}): {e}. "
+                "Check RESEARCH_EMBEDDING_DIMENSIONALITY configuration."
+            ) from e
+        # Re-raise other ValueError/RuntimeError
+        logger.error("RAG indexing failed for %s: %s", name, e)
+        raise
+    except Exception as e:
+        # Transient errors (network, API limits) are logged but don't fail the pipeline
+        logger.warning(
+            "Failed to index research for RAG (%s): %s. This may be transient.",
+            name,
+            e,
+            exc_info=True,
+        )
+        return False
 
 
 async def retrieve_similar_research(entity: Entity) -> RagMatch | None:

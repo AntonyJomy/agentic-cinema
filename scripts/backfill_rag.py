@@ -105,7 +105,7 @@ def backfill(*, dry_run: bool, limit: int | None) -> int:
             "    --collection-group=entity_research_vectors \\\n"
             "    --query-scope=COLLECTION \\\n"
             "    --field-config field-path=entity_type,order=ASCENDING \\\n"
-            "    --field-config vector-config='{\"dimension\":\"768\",\"flat\": \"{}\"}',field-path=embedding"
+            "    --field-config vector-config='{\"dimension\":\"1536\",\"flat\": \"{}\"}',field-path=embedding"
         )
     return 0
 

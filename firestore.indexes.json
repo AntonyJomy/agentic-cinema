@@ -1,0 +1,23 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "entity_research_vectors",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "entity_type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 1536,
+            "flat": {}
+          }
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": [],
+  "_comment": "Vector dimension (1536) must match research_embedding_dimensionality() in research/rag_config.py (default: 1536, configurable via RESEARCH_EMBEDDING_DIMENSIONALITY env var)"
+}
