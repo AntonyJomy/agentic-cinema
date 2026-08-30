@@ -3,27 +3,31 @@ api/auth.py
 
 Request identity for the clearance API.
 
-THIS MODULE IS A DEVELOPMENT STUB. It does not authenticate anyone.
-Firebase Authentication / login / signup is not implemented.
+Auth modes (AUTH_MODE):
+  - development: missing Bearer → DEV_USER; present Bearer → verify Firebase
+  - firebase: Bearer Firebase ID token required on every request
 
-TODO(firebase-auth): Replace get_current_user() with Firebase ID token
-verification. Endpoints should keep depending on this function so that
-swap does not require rewriting route handlers.
+Token verification uses Google public certs (no service account required).
+Optional Firebase Admin credentials enable Admin SDK verification when present.
 
-Future flow:
-    Authorization: Bearer <Firebase ID Token>
-        → firebase_admin.auth.verify_id_token
-        → CurrentUser(uid, email, name, role from claims)
-        → existing API endpoints
+Optional:
+  AUTH_REQUIRE_LEGAL_REVIEWER=true requires custom claim legal_reviewer=true.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from fastapi import Request
+from fastapi import HTTPException, Request
+
+from api.settings import auth_mode, auth_require_legal_reviewer
+from gatekeeper.firebase_auth import (
+    AuthenticationError,
+    AuthorizationError,
+    verify_id_token,
+    verify_legal_reviewer,
+)
 
 
-# Isolated development-only identity. Not a security boundary.
 DEV_USER_ID = "dev-user"
 
 
@@ -50,16 +54,68 @@ DEV_USER = CurrentUser(
 )
 
 
+def _bearer_token(request: Request) -> str | None:
+    authorization = request.headers.get("Authorization") or ""
+    scheme, _, value = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not value.strip():
+        return None
+    return value.strip()
+
+
+def _user_from_claims(decoded: dict) -> CurrentUser:
+    uid = str(decoded.get("uid") or decoded.get("sub") or "").strip()
+    if not uid:
+        raise AuthenticationError("Firebase token is missing uid")
+
+    email = str(decoded.get("email") or "").strip()
+    name = (
+        str(decoded.get("name") or "").strip()
+        or (email.split("@", 1)[0] if email else "")
+        or uid
+    )
+    role = (
+        "legal_reviewer"
+        if decoded.get("legal_reviewer") is True
+        else "authenticated"
+    )
+    return CurrentUser(
+        uid=uid,
+        email=email or f"{uid}@users.noreply",
+        name=name,
+        role=role,
+        is_development_identity=False,
+    )
+
+
 def get_current_user(request: Request) -> CurrentUser:
-    """Return the caller identity for this request.
+    """Return the caller identity for this request."""
+    token = _bearer_token(request)
+    mode = auth_mode()
 
-    Development: always returns DEV_USER. Request headers and body are ignored
-    for identity (uid, reviewer name, role, approval identity).
+    if token:
+        try:
+            if auth_require_legal_reviewer():
+                decoded = verify_legal_reviewer(token)
+            else:
+                decoded = verify_id_token(token)
+            return _user_from_claims(decoded)
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except AuthenticationError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication failed",
+            ) from exc
 
-    TODO(firebase-auth): Read Authorization: Bearer <id_token>, verify with
-    Firebase, map uid/email/name and the legal_reviewer claim onto CurrentUser.
-    Reject missing/invalid tokens in production. The `request` argument is
-    accepted now so that swap does not change the FastAPI dependency signature.
-    """
-    _ = request
-    return DEV_USER
+    if mode == "development":
+        return DEV_USER
+
+    raise HTTPException(
+        status_code=401,
+        detail=(
+            "Authentication required. Sign in with Google and send "
+            "an Authorization Bearer Firebase ID token."
+        ),
+    )

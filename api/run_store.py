@@ -268,7 +268,11 @@ class FirestoreRunStore:
         payload["run_id"] = run_id
         payload["script_id"] = stored.public.run.script_id
         payload["script_title"] = stored.public.run.script_title
+        # Mirrored to the top level so dashboard queries can filter/sort on it.
+        payload["created_at"] = stored.public.run.created_at
         payload["script_file_url"] = stored.public.run.script_file_url
+        payload["report_file_url"] = stored.public.run.report_file_url
+        payload["report_hash"] = stored.public.run.report_hash
         payload["overall_status"] = stored.public.run.overall_status
         payload["reviewed_by"] = stored.public.run.reviewed_by
         payload["reviewed_at"] = stored.public.run.reviewed_at

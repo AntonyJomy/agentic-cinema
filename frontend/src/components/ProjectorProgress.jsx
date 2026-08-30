@@ -23,6 +23,9 @@ function CheckIcon() {
 export default function ProjectorProgress() {
   const runCtx = useRun();
   const location = useLocation();
+  if (location.pathname === '/dashboard') {
+    return null;
+  }
   const maxStep = getMaxStepIndex(runCtx);
   const currentStep = Math.max(0, STEPS.findIndex((s) => s.path === location.pathname));
   const beamPercent = (currentStep / (STEPS.length - 1)) * 100;

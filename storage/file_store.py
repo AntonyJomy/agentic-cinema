@@ -23,13 +23,20 @@ from google.cloud import storage
 
 load_dotenv()
 
-# Cloud Storage configuration
+# Cloud Storage configuration — resolved lazily so the module can be imported
+# in test environments that don't set GCS_BUCKET_NAME.
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
-if not GCS_BUCKET_NAME:
-    raise ValueError(
-        "GCS_BUCKET_NAME environment variable is required. "
-        "Set it in .env file (e.g., GCS_BUCKET_NAME=script-clearance-scripts)"
-    )
+
+
+def _require_bucket_name() -> str:
+    """Return GCS_BUCKET_NAME or raise a clear error at call time (not import time)."""
+    name = os.getenv("GCS_BUCKET_NAME") or GCS_BUCKET_NAME
+    if not name:
+        raise ValueError(
+            "GCS_BUCKET_NAME environment variable is required. "
+            "Set it in .env file (e.g., GCS_BUCKET_NAME=script-clearance-scripts)"
+        )
+    return name
 
 
 def _get_storage_client() -> storage.Client:
@@ -39,7 +46,7 @@ def _get_storage_client() -> storage.Client:
 
 def _get_bucket(client: storage.Client) -> storage.Bucket:
     """Get the Cloud Storage bucket for this project."""
-    return client.bucket(GCS_BUCKET_NAME)
+    return client.bucket(_require_bucket_name())
 
 
 def _generate_blob_name(run_id: str, filename: str) -> str:
@@ -86,7 +93,7 @@ def upload_screenplay(run_id: str, file_bytes: bytes, filename: str) -> str:
     blob = bucket.blob(blob_name)
     blob.upload_from_string(file_bytes, content_type="application/octet-stream")
 
-    return f"gs://{GCS_BUCKET_NAME}/{blob_name}"
+    return f"gs://{_require_bucket_name()}/{blob_name}"
 
 
 def get_screenplay_url(run_id: str) -> str:
@@ -99,7 +106,7 @@ def get_screenplay_url(run_id: str) -> str:
     Returns:
         gs:// URL for the screenplay file
     """
-    return f"gs://{GCS_BUCKET_NAME}/runs/{run_id}/"
+    return f"gs://{_require_bucket_name()}/runs/{run_id}/"
 
 
 def upload_report(run_id: str, pdf_bytes: bytes) -> tuple[str, str]:
@@ -126,7 +133,7 @@ def upload_report(run_id: str, pdf_bytes: bytes) -> tuple[str, str]:
     blob = bucket.blob(blob_name)
     blob.upload_from_string(pdf_bytes, content_type="application/pdf")
 
-    return f"gs://{GCS_BUCKET_NAME}/{blob_name}", report_hash
+    return f"gs://{_require_bucket_name()}/{blob_name}", report_hash
 
 
 def download_file(blob_name: str) -> bytes:
@@ -145,6 +152,45 @@ def download_file(blob_name: str) -> bytes:
     client = _get_storage_client()
     bucket = _get_bucket(client)
     blob = bucket.blob(blob_name)
+    return blob.download_as_bytes()
+
+
+def parse_gs_url(gs_url: str) -> tuple[str, str]:
+    """
+    Split a gs:// URL into (bucket_name, blob_name).
+
+    Example:
+        gs://my-bucket/runs/run_1/clearance_report.pdf
+        -> ("my-bucket", "runs/run_1/clearance_report.pdf")
+
+    Raises:
+        ValueError: If the URL is not a well-formed gs:// URL.
+    """
+    if not gs_url or not gs_url.startswith("gs://"):
+        raise ValueError(f"Not a gs:// URL: {gs_url!r}")
+
+    remainder = gs_url[len("gs://"):]
+    bucket_name, _, blob_name = remainder.partition("/")
+    if not bucket_name or not blob_name:
+        raise ValueError(f"gs:// URL is missing a bucket or object path: {gs_url!r}")
+    return bucket_name, blob_name
+
+
+def download_from_gs_url(gs_url: str) -> bytes:
+    """
+    Download an object addressed by a full gs:// URL.
+
+    Unlike download_file(), this honours the bucket named in the URL rather than
+    assuming the currently configured bucket, so stored record pointers keep
+    resolving even if GCS_BUCKET_NAME changes later.
+
+    Raises:
+        ValueError: If the URL is malformed.
+        google.cloud.exceptions.NotFound: If the object doesn't exist.
+    """
+    bucket_name, blob_name = parse_gs_url(gs_url)
+    client = _get_storage_client()
+    blob = client.bucket(bucket_name).blob(blob_name)
     return blob.download_as_bytes()
 
 
