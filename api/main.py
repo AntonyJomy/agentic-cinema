@@ -18,18 +18,19 @@ import logging
 import os
 import sys
 import time
+import uuid
 from collections import defaultdict, deque
 from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root))
 
-load_dotenv(project_root / ".env")
+load_dotenv(project_root / ".env", override=True)
 if os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
     os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
@@ -46,6 +47,7 @@ from api.run_store import (  # noqa: E402
 from api.schemas import (  # noqa: E402
     ClearanceRequest,
     ClearanceResponse,
+    ClearanceRunResponse,
     EntityDecisionRequest,
     ExtractScriptResponse,
     OverallDecisionRequest,
@@ -57,7 +59,10 @@ from api.settings import (  # noqa: E402
     max_upload_bytes,
     rate_limit_per_minute,
 )
-from gatekeeper.cloud_storage import upload_screenplay  # noqa: E402
+from storage.file_store import upload_screenplay as _storage_upload_screenplay  # noqa: E402
+from storage.file_store import upload_report as _storage_upload_report  # noqa: E402
+from storage.file_store import download_from_gs_url as _storage_download_from_gs_url  # noqa: E402
+from storage.firestore_run_store import attach_report as _firestore_attach_report  # noqa: E402
 from orchestrator import run_clearance_pipeline  # noqa: E402
 from schemas.legal_review import ReviewDecision  # noqa: E402
 
@@ -82,6 +87,10 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
+    # Response headers are hidden from cross-origin JS unless named here. The
+    # report download relies on all three: the digest and provenance drive
+    # tamper-evident verification, and the disposition supplies the filename.
+    expose_headers=["X-Report-SHA256", "X-Report-Source", "Content-Disposition"],
 )
 
 GENERIC_PIPELINE_ERROR = "Clearance processing failed."
@@ -192,9 +201,75 @@ def _persist_pipeline(
     return public
 
 
+def _maybe_generate_report(updated: StoredClearanceRun, reviewer_name: str) -> StoredClearanceRun:
+    """
+    If a run just became cleared_for_export, generate the PDF report,
+    upload it to Cloud Storage, record the URL+hash in Firestore via
+    attach_report(), and stamp the values onto the stored run so the
+    API response includes them immediately.
+
+    Non-fatal: any GCS or PDF error is logged and the run is returned unchanged.
+    """
+    if not updated.public.cleared_for_export:
+        return updated
+
+    run_id = updated.public.run.run_id
+
+    # Skip if the report was already generated for this run
+    if updated.public.run.report_file_url:
+        return updated
+
+    try:
+        from api.report_generator import generate_report_pdf
+        pdf_bytes = generate_report_pdf(updated.public)
+    except Exception:
+        logger.exception("PDF generation failed for run %s", run_id)
+        return updated
+
+    try:
+        report_url, report_hash = _storage_upload_report(run_id, pdf_bytes)
+    except Exception:
+        logger.exception("PDF upload failed for run %s", run_id)
+        return updated
+
+    try:
+        _firestore_attach_report(
+            run_id=run_id,
+            report_url=report_url,
+            report_hash=report_hash,
+            exported_by=reviewer_name,
+        )
+    except Exception:
+        logger.warning("attach_report Firestore call failed for run %s", run_id, exc_info=True)
+        # Continue — the file is already uploaded; URL+hash are stamped below.
+
+    # Stamp URL and hash onto the in-memory run so the response reflects them.
+    stamped_run = updated.public.run.model_copy(
+        update={"report_file_url": report_url, "report_hash": report_hash}
+    )
+    stamped_public = updated.public.model_copy(update={"run": stamped_run})
+    updated = updated.model_copy(update={"public": stamped_public})
+
+    logger.info("Clearance report generated for run %s: %s", run_id, report_url)
+    return updated
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/me")
+async def get_current_user_profile(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict[str, str]:
+    """Return the authenticated user's profile information."""
+    return {
+        "uid": current_user.uid,
+        "email": current_user.email,
+        "name": current_user.name,
+        "role": current_user.role,
+    }
 
 
 @app.post(
@@ -246,24 +321,27 @@ async def extract_script(
         raise
 
     title = (script_title or "").strip() or None
-    
-    # Upload file to Cloud Storage for persistence
-    # Generate a run_id for the file (we'll use a temporary one since no clearance run exists yet)
-    import uuid
-    temp_run_id = f"upload-{uuid.uuid4().hex[:8]}"
-    
+
+    # Generate the stable run_id here, at first contact with the file.
+    # This same id must be passed to /clearance so the pipeline, the Cloud
+    # Storage path, and the Firestore document all share one identity.
+    run_id = str(uuid.uuid4())
+
+    script_file_url: str | None = None
     try:
-        file_url = upload_screenplay(raw, filename, temp_run_id)
+        # storage/file_store.upload_screenplay signature: (run_id, file_bytes, filename)
+        script_file_url = _storage_upload_screenplay(run_id, raw, filename)
     except Exception as exc:
-        logger.warning(f"Failed to upload file to Cloud Storage: {exc}")
-        file_url = None  # Continue without file storage if GCS is unavailable
-    
+        logger.warning("Failed to upload file to Cloud Storage: %s", exc)
+        # Non-fatal — continue without GCS if credentials/bucket are unavailable.
+
     return ExtractScriptResponse(
+        run_id=run_id,
         script=script,
         filename=filename,
         page_count=page_count,
         script_title=title,
-        # Include file_url in the response for tracking
+        script_file_url=script_file_url,
     )
 
 
@@ -284,6 +362,7 @@ async def run_clearance(
             script,
             screenplay_path="<api>",
             user_id=current_user.uid,
+            run_id=request.run_id or None,
         )
     except RuntimeError as exc:
         logger.warning("Pipeline stopped: %s", exc)
@@ -304,12 +383,18 @@ async def run_clearance(
         script_title=request.script_title,
         source_file_name=request.source_file_name,
     )
-    
-    # Upload original file to Cloud Storage
-    # Note: We don't have the raw file bytes here since they were already consumed
-    # In a production system, you'd pass the file bytes through or re-upload
-    # For now, we'll just note that the file should be stored during /extract-script
-    
+
+    # Attach the Cloud Storage URL from /extract-script so it is stored on
+    # the Firestore document and returned in every subsequent GET response.
+    if request.script_file_url:
+        public = public.model_copy(
+            update={
+                "run": public.run.model_copy(
+                    update={"script_file_url": request.script_file_url}
+                )
+            }
+        )
+
     return _persist_pipeline(pipeline_result, public, current_user)
 
 
@@ -335,6 +420,7 @@ async def run_clearance_stream(
                     screenplay_path="<api>",
                     user_id=current_user.uid,
                     on_progress=on_progress,
+                    run_id=request.run_id or None,
                 )
 
                 if request.script_title:
@@ -349,6 +435,14 @@ async def run_clearance_stream(
                     script_title=request.script_title,
                     source_file_name=request.source_file_name,
                 )
+                if request.script_file_url:
+                    public = public.model_copy(
+                        update={
+                            "run": public.run.model_copy(
+                                update={"script_file_url": request.script_file_url}
+                            )
+                        }
+                    )
                 public = _persist_pipeline(pipeline_result, public, current_user)
                 await queue.put(
                     {
@@ -402,6 +496,200 @@ async def get_clearance_run(
     return stored.public
 
 
+@app.get("/clearance")
+async def list_user_clearance_runs(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """
+    Return all clearance runs owned by the authenticated user, with dashboard stats.
+    
+    Response shape matches frontend expectations:
+    {
+      "runs": [{run_id, script_title, created_at, updated_at, overall_status,
+                entity_count, high_count, caution_count, clear_count}],
+      "stats": {total_scripts, total_flags, awaiting_review, high_risk_unresolved, clearance_rate}
+    }
+    """
+    store = get_run_store()
+
+    logger.info("Dashboard query for uid=%s", current_user.uid)
+    
+    # If using memory store (tests/local dev without Firestore), return empty
+    if not hasattr(store, '_collection'):
+        return {"runs": [], "stats": {
+            "total_scripts": 0,
+            "total_flags": 0,
+            "awaiting_review": 0,
+            "high_risk_unresolved": 0,
+            "clearance_rate": 0,
+        }}
+    
+    # Query Firestore for runs owned by this user.
+    #
+    # Deliberately no order_by: an equality-only filter is served by Firestore's
+    # automatic single-field index, so this needs no composite index. Ordering on
+    # created_at here would also silently drop older documents that predate the
+    # top-level created_at mirror, since Firestore excludes documents missing the
+    # sort field. Sorting happens in Python below instead.
+    try:
+        query = (
+            store._collection
+            .where("owner_uid", "==", current_user.uid)
+            .limit(100)
+        )
+
+        docs = list(query.stream())
+        runs = []
+
+        for doc in docs:
+            data = doc.to_dict()
+            if not data:
+                continue
+
+            # The public payload is nested under "public"; several fields are also
+            # mirrored to the top level by FirestoreRunStore.save(). Read the
+            # mirror first and fall back to the nested copy so runs written before
+            # the mirror existed still resolve.
+            public = data.get("public") or {}
+            public_run = public.get("run") or {}
+
+            # _public_summary() writes flat *_count keys, not a counts_by_risk dict.
+            summary = data.get("summary") or public.get("summary") or {}
+
+            runs.append({
+                "run_id": data.get("run_id") or public_run.get("run_id"),
+                "script_title": data.get("script_title") or public_run.get("script_title"),
+                "created_at": data.get("created_at") or public_run.get("created_at"),
+                "updated_at": data.get("updated_at") or public_run.get("updated_at"),
+                "overall_status": (
+                    data.get("overall_status")
+                    or public_run.get("overall_status")
+                    or "pending"
+                ),
+                "entity_count": summary.get("total_entities") or 0,
+                "high_count": summary.get("high_risk_count") or 0,
+                "caution_count": summary.get("caution_count") or 0,
+                "clear_count": summary.get("clear_count") or 0,
+                "cleared_for_export": bool(
+                    data.get("cleared_for_export")
+                    or public.get("cleared_for_export")
+                ),
+            })
+
+        # Newest first. Runs without a timestamp sort last rather than crashing.
+        runs.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+        
+        logger.info("Dashboard query returned %d run(s) for uid=%s", len(runs), current_user.uid)
+
+        # Compute aggregate stats
+        total_scripts = len(runs)
+        total_flags = sum(r["entity_count"] for r in runs)
+        awaiting_review = sum(1 for r in runs if r["overall_status"] == "pending")
+        high_risk_unresolved = sum(r["high_count"] for r in runs if not r["cleared_for_export"])
+        cleared = sum(1 for r in runs if r["overall_status"] == "approved")
+        clearance_rate = (cleared / total_scripts * 100) if total_scripts else 0
+        
+        return {
+            "runs": runs,
+            "stats": {
+                "total_scripts": total_scripts,
+                "total_flags": total_flags,
+                "awaiting_review": awaiting_review,
+                "high_risk_unresolved": high_risk_unresolved,
+                "clearance_rate": round(clearance_rate),
+            },
+        }
+        
+    except Exception as exc:
+        logger.exception("Failed to list user clearance runs")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load your clearance runs.",
+        ) from exc
+
+
+def _report_filename(run: ClearanceRunResponse) -> str:
+    """Build a safe download filename from the script title."""
+    raw = run.script_title or run.run_id or "clearance_report"
+    stem = Path(raw).stem  # drop a trailing .pdf/.txt from the original upload
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in stem).strip("_")
+    return f"{safe or 'clearance_report'}_scriptclearAI.pdf"
+
+
+@app.get("/clearance/{run_id}/pdf")
+async def download_clearance_report(
+    run_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> Response:
+    """
+    Stream the clearance report PDF for a run the caller owns.
+
+    Serves the stored artifact from Cloud Storage using the gs:// pointer held on
+    the run record, so the bytes the user downloads are the exact ones that were
+    hashed at sign-off. If the pointer is missing (run predates report storage,
+    or the upload failed) the PDF is rebuilt on demand so the button still works.
+    """
+    stored = _load_owned_run(run_id, current_user)
+    run = stored.public.run
+    disposition = f'attachment; filename="{_report_filename(run)}"'
+
+    report_url = run.report_file_url
+    if report_url:
+        try:
+            pdf_bytes = _storage_download_from_gs_url(report_url)
+        except Exception:
+            logger.exception(
+                "Could not fetch stored report for run %s (%s); regenerating",
+                run_id,
+                report_url,
+            )
+        else:
+            # These are the exact bytes that were hashed at sign-off, so the
+            # recorded digest is a valid reference for verifying this copy.
+            headers = {
+                "Content-Disposition": disposition,
+                "X-Report-Source": "storage",
+            }
+            if run.report_hash:
+                headers["X-Report-SHA256"] = run.report_hash
+            logger.info("Served stored report for run %s from %s", run_id, report_url)
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers=headers,
+            )
+
+    # Fallback: rebuild from the persisted run so the download never dead-ends.
+    try:
+        from api.report_generator import generate_report_pdf
+
+        pdf_bytes = generate_report_pdf(stored.public)
+    except Exception as exc:
+        logger.exception("On-demand report generation failed for run %s", run_id)
+        raise HTTPException(
+            status_code=500,
+            detail="The clearance report could not be produced.",
+        ) from exc
+
+    # Deliberately no X-Report-SHA256 here. generate_report_pdf() stamps the
+    # current timestamp into the header band, so a rebuilt PDF never reproduces
+    # the bytes that were hashed at sign-off. Returning the stored digest
+    # alongside these bytes would make a legitimate report look tampered with.
+    # X-Report-Source lets the client say "regenerated copy — verification
+    # unavailable" instead of reporting a false mismatch.
+    logger.info(
+        "Served regenerated report for run %s; copy is not hash-verifiable", run_id
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": disposition,
+            "X-Report-Source": "regenerated",
+        },
+    )
+
+
 @app.post(
     "/clearance/{run_id}/entities/{entity_id}/decision",
     response_model=ClearanceResponse,
@@ -430,6 +718,8 @@ async def record_entity_decision_endpoint(
             detail="This decision could not be recorded for the requested entity.",
         ) from exc
 
+    get_run_store().save(updated)
+    updated = _maybe_generate_report(updated, reviewer_name=current_user.name or current_user.uid)
     get_run_store().save(updated)
     return updated.public
 
@@ -463,5 +753,7 @@ async def record_overall_decision_endpoint(
             detail="This run cannot be approved until required entity reviews are complete.",
         ) from exc
 
+    get_run_store().save(updated)
+    updated = _maybe_generate_report(updated, reviewer_name=current_user.name or current_user.uid)
     get_run_store().save(updated)
     return updated.public

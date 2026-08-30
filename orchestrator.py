@@ -357,6 +357,7 @@ async def run_extraction(
     screenplay_text: str,
     user_id: str = "orchestrator",
     on_progress: ProgressCallback | None = None,
+    run_id: str | None = None,
 ) -> Entities:
     """Run extraction agent on screenplay text."""
     print("\n" + "="*80)
@@ -427,6 +428,12 @@ async def run_extraction(
     }
 
     entities = Entities.model_validate(parsed)
+
+    # If a stable run_id was supplied by the caller (from /extract-script),
+    # override the auto-generated one so the file upload, pipeline, and
+    # Firestore document all share the same identity.
+    if run_id is not None:
+        entities = entities.model_copy(update={"run_id": run_id})
 
     print(f"\nExtracted {entities.entity_count} entities:")
     for i, entity in enumerate(entities.entities, 1):
@@ -1416,6 +1423,7 @@ async def run_clearance_pipeline(
     user_id: str = "orchestrator",
     legal_review: LegalReviewPackage | None = None,
     on_progress: ProgressCallback | None = None,
+    run_id: str | None = None,
 ) -> ClearancePipelineResult:
     """
     Run the full clearance pipeline from screenplay text to gatekeeper result.
@@ -1430,6 +1438,7 @@ async def run_clearance_pipeline(
         screenplay_text,
         user_id=user_id,
         on_progress=on_progress,
+        run_id=run_id,
     )
     if extracted_entities.entity_count == 0:
         raise RuntimeError("No entities extracted from screenplay")

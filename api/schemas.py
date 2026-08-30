@@ -20,17 +20,31 @@ class ClearanceRequest(BaseModel):
     source_file_name: str | None = Field(
         None, description="Original filename for display only"
     )
+    run_id: str | None = Field(
+        None,
+        description="Stable run_id returned by /extract-script. "
+        "When provided the pipeline and Firestore record use this exact id.",
+    )
+    script_file_url: str | None = Field(
+        None,
+        description="gs:// URL returned by /extract-script. "
+        "Stored as script_file_url on the Firestore run document.",
+    )
 
 
 class ExtractScriptResponse(BaseModel):
     """POST /extract-script response body."""
 
+    run_id: str = Field(..., description="Stable run ID to pass to /clearance")
     script: str = Field(..., description="Extracted screenplay text")
     filename: str = Field(..., description="Original uploaded filename")
     page_count: int | None = Field(
         None, description="PDF page count when source was a PDF"
     )
     script_title: str | None = Field(None, description="Optional script title")
+    script_file_url: str | None = Field(
+        None, description="gs:// URL of the uploaded file in Cloud Storage"
+    )
 
 
 class EntityDecisionRequest(BaseModel):
@@ -80,6 +94,8 @@ class ClearanceRunResponse(BaseModel):
     script_id: str
     script_title: str | None = None
     script_file_url: str | None = None  # Cloud Storage URL for uploaded file
+    report_file_url: str | None = None  # Cloud Storage URL for the clearance report PDF
+    report_hash: str | None = None      # SHA-256 hex digest of the report PDF
     created_at: str
     updated_at: str
     overall_status: str
