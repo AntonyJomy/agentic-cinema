@@ -514,8 +514,18 @@ async def list_user_clearance_runs(
 
     logger.info("Dashboard query for uid=%s", current_user.uid)
     
-    # If using memory store (tests/local dev without Firestore), return empty
+    # Memory store has no collection — only valid for local/tests. In production
+    # this would silently show an empty desk even when Firestore has data.
     if not hasattr(store, '_collection'):
+        if is_production():
+            logger.error(
+                "Dashboard store is not Firestore (got %s); refusing empty fallback",
+                type(store).__name__,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Clearance store unavailable. Check Firestore configuration.",
+            )
         return {"runs": [], "stats": {
             "total_scripts": 0,
             "total_flags": 0,
