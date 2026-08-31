@@ -29,10 +29,10 @@ function apiUrl(path) {
   return `${base}${path}`;
 }
 
-async function authHeaders(extra = {}) {
+async function authHeaders(extra = {}, { forceRefresh = false } = {}) {
   // Lazy import keeps the API client usable in tests without Firebase env.
   const { getIdToken } = await import('../auth/firebase');
-  const token = await getIdToken();
+  const token = await getIdToken(forceRefresh);
   const headers = { ...extra };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -228,9 +228,11 @@ export async function runClearanceStream({
 export async function listClearanceRuns({ signal } = {}) {
   let response;
   try {
+    // Force-refresh so a stale/missing cached token does not produce an empty
+    // or 401 dashboard right after Google sign-in on Cloud Run.
     response = await fetch(apiUrl('/clearance'), {
       method: 'GET',
-      headers: await authHeaders(),
+      headers: await authHeaders({}, { forceRefresh: true }),
       signal,
     });
   } catch (error) {

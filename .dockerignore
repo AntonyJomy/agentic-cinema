@@ -1,0 +1,27 @@
+.git
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+node_modules
+frontend
+tests
+**/.DS_Store
+*.md
+.cursor
+.pytest_cache
+.coverage
+htmlcov
+deploy
+scripts
+cloudbuild.yaml
+.dockerignore
+**/* 2.py
+**/* 2.js
+**/* 2.jsx
+**/* 2.css
+**/* 2.md
