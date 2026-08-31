@@ -47,10 +47,22 @@ def _adc_path() -> Path | None:
     return None
 
 
+def _running_on_gcp() -> bool:
+    """Cloud Run / Cloud Functions / App Engine attach ADC via the metadata server."""
+    return bool(
+        os.getenv("K_SERVICE")  # Cloud Run
+        or os.getenv("FUNCTION_TARGET")  # Cloud Functions
+        or os.getenv("GAE_ENV")  # App Engine
+        or os.getenv("GCE_METADATA_HOST")
+    )
+
+
 def admin_credentials_available() -> bool:
-    """True when a service-account file or ADC file is present."""
+    """True when a service-account/ADC file exists, or we are on GCP with metadata ADC."""
     path = _adc_path()
-    return bool(path and path.is_file())
+    if path and path.is_file():
+        return True
+    return _running_on_gcp()
 
 
 def ensure_firebase_app() -> firebase_admin.App:
@@ -75,13 +87,8 @@ def ensure_firebase_app() -> firebase_admin.App:
         )
         raise RuntimeError(_init_error)
 
-    if not admin_credentials_available():
-        _init_error = (
-            "Firebase Admin credentials not found. "
-            "Token verification will use google-auth public certs."
-        )
-        raise RuntimeError(_init_error)
-
+    # Prefer an explicit file when present; otherwise use Application Default
+    # Credentials (local ADC file OR Cloud Run / GCE metadata server).
     try:
         cred_path = (os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "").strip()
         if cred_path and os.path.isfile(cred_path):

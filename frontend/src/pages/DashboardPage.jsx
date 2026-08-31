@@ -103,6 +103,15 @@ export default function DashboardPage() {
   const [viewingId, setViewingId] = useState(null);
 
   useEffect(() => {
+    // Wait until Firebase has a signed-in user before listing; otherwise the
+    // request goes out without a Bearer token and the desk looks empty/broken.
+    if (!user?.uid) {
+      setLoading(true);
+      setRuns([]);
+      setError(null);
+      return undefined;
+    }
+
     const controller = new AbortController();
     (async () => {
       setLoading(true);
@@ -118,7 +127,7 @@ export default function DashboardPage() {
       }
     })();
     return () => controller.abort();
-  }, []);
+  }, [user?.uid]);
 
   const stats = useMemo(() => {
     const scripts = runs.length;
@@ -337,8 +346,12 @@ export default function DashboardPage() {
           <p className="dashboard-empty">Loading your reports…</p>
         ) : runs.length === 0 ? (
           <div className="dashboard-empty-panel panel">
-            <h2>No reports yet</h2>
-            <p>Upload a screenplay to run clearance and build your report history.</p>
+            <h2>No reports for this account</h2>
+            <p>
+              Clearance history is tied to the Google account you signed in with.
+              Local <code>dev-user</code> test runs will not appear here. Upload a
+              screenplay to create the first report for this account.
+            </p>
             <Link className="btn-primary" to="/upload">
               Start clearance
             </Link>
