@@ -1,10 +1,20 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
+/* Horizontal clipping lives on body, not .landing: overflow set on any
+   axis of a non-root element makes it a scroll container that position:
+   sticky descendants stick relative to instead of the real viewport
+   (Hero's first-scroll pin included) — breaking sticky page-wide. Overflow
+   set on body specifically propagates to the viewport's own scroller
+   instead of creating a nested one, so it clips horizontal overflow
+   without that side effect. */
+body {
+  overflow-x: hidden;
+}
+
 .landing {
   background: #0B0B0C;
   color: #F2F0EA;
   font-family: 'Inter', sans-serif;
-  overflow-x: hidden;
 }
 
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
@@ -19,6 +29,7 @@
 .section-marker {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;

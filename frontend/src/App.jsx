@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Routes, Route, Outlet, Navigate, useLocation } from 'react-router-dom';
 import LandingPage from './landing/LandingPage';
+import About from './landing/About';
 import AppHeader from './components/AppHeader';
 import DustField from './components/DustField';
 import { ProductTour, useTourState } from './components/ProductTour';
@@ -62,6 +63,7 @@ function App() {
         <ProductTour run={tourState.runTour} onComplete={tourState.completeTour} />
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/about" element={<About />} />
           <Route path="/login" element={<LoginPage />} />
           <Route
             element={

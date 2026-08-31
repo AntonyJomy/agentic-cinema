@@ -10,6 +10,12 @@ import './Services.css';
 // real specialist agents in agents/, grouped by the risk category they
 // research (schemas/entities.py RiskCategory) — real functionality, not
 // invented feature copy.
+// Each `video` path is a placeholder — no licensed footage has been
+// sourced yet. See VIDEO_REQUIREMENTS.md for exactly what each file needs
+// to show; drop a matching MP4 at the path and it starts playing with no
+// further code changes. Until then the existing amber gradient in
+// .service-visual (Services.css) shows through as a graceful fallback —
+// a <video> with a missing src renders as nothing, not a broken-image icon.
 const SERVICES = [
   {
     index: '01',
@@ -23,6 +29,7 @@ const SERVICES = [
       'Business name matching',
       'Real-world verification',
     ],
+    video: '/videos/agents/business-brand.mp4',
   },
   {
     index: '02',
@@ -36,6 +43,7 @@ const SERVICES = [
       'Demographic research',
       'Defamation risk scoring',
     ],
+    video: '/videos/agents/character-identity.mp4',
   },
   {
     index: '03',
@@ -49,6 +57,7 @@ const SERVICES = [
       'Copyright research',
       'Licensing flags',
     ],
+    video: '/videos/agents/music-literary.mp4',
   },
   {
     index: '04',
@@ -62,6 +71,7 @@ const SERVICES = [
       'License plate screening',
       'Privacy risk assessment',
     ],
+    video: '/videos/agents/privacy-location.mp4',
   },
 ];
 
@@ -98,6 +108,16 @@ function ServiceCard({ s, reverse }) {
   return (
     <article className={`service-card${reverse ? ' service-card--reverse' : ''}`} ref={cardRef}>
       <div className="service-visual" ref={visualRef}>
+        <video
+          className="service-visual-video"
+          src={s.video}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-hidden="true"
+        />
         <span className="service-index">{s.index}.</span>
         <span className="service-visual-tag">{s.tag}</span>
       </div>

@@ -1,17 +1,20 @@
-.story-grid {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 64px;
+.story-intro {
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
 }
 
 .story-heading {
-  margin: 0 0 20px;
+  margin: 0 auto 20px;
   font-family: 'Inter Tight', sans-serif;
   font-weight: 700;
   font-size: 34px;
   line-height: 1.2;
   color: #F2F0EA;
-  max-width: 560px;
+  /* Reads better as one line than wrapped mid-sentence — no max-width
+     cap here (unlike the paragraphs below) so it never wraps on its own;
+     the mobile override undoes this where there isn't room for it. */
+  white-space: nowrap;
 }
 
 .story-paragraph {
@@ -20,65 +23,198 @@
   line-height: 1.7;
   color: #A6A49C;
   max-width: 560px;
-  margin: 0 0 18px;
+  margin: 0 auto 18px;
 }
 
-.story-panel {
-  border: 1px solid #1E1F22;
-  background: rgba(19, 19, 21, 0.7);
-  padding: 28px;
-  align-self: start;
+/* Horizontal timeline: a full-width progress bar with 7 evenly-spaced
+   checkpoints. */
+.story-pipeline {
+  margin-top: 112px;
 }
 
-.story-panel-label {
+.story-pipeline-label {
   display: block;
+  text-align: center;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 10.5px;
   letter-spacing: 0.1em;
   color: #D4A24C;
-  margin-bottom: 18px;
+  margin-bottom: 36px;
 }
 
-.story-steps {
+/* The rail (bar + circles) breaks out past .landing-section's own 1280px
+   cap — the same full-bleed technique StackStrip's marquee uses — so the
+   bar reads as a genuinely long horizontal line rather than a short
+   strip sitting in the middle of a wide section, while "THE PIPELINE"
+   label above it stays put at the section's normal left-aligned margin
+   (mirroring how StackStrip's own "BUILT ON" label stays at the normal
+   margin above its full-bleed marquee). */
+.story-pipeline-rail {
+  position: relative;
+  box-sizing: border-box;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  /* Named so the track/fill inset below can reference the exact same
+     value — a percentage on an absolutely positioned child here resolves
+     against this padding box's full width (gutters included), not the
+     narrower nodes-list content width inside it, so the inset has to
+     account for the gutter explicitly rather than assume a plain
+     fraction of 100%. */
+  --pipeline-gutter: clamp(24px, 6vw, 120px);
+  padding: 0 var(--pipeline-gutter);
+  /* Single knob for the dot size — the mobile override below derives
+     from it (as half of it, the dot's radius), so it can't drift out of
+     sync with the dot's own width/height. */
+  --pipeline-dot-size: 46px;
+}
+
+/* Inset so the bar's start/end line up exactly with the first/last dot's
+   true center. With 7 equal-width segments (see .story-pipeline-node
+   below), each dot sits at its own segment's center — for the first/last
+   segment, that's the gutter plus half of one segment's share of the
+   remaining (gutter-excluded) width, i.e. gutter + (100% - 2*gutter)/14. */
+.story-pipeline-track,
+.story-pipeline-fill {
+  position: absolute;
+  left: calc(var(--pipeline-gutter) + (100% - 2 * var(--pipeline-gutter)) / 14);
+  right: calc(var(--pipeline-gutter) + (100% - 2 * var(--pipeline-gutter)) / 14);
+  top: calc(var(--pipeline-dot-size) / 2);
+  height: 3px;
+}
+
+.story-pipeline-track {
+  background: #1E1F22;
+}
+
+/* Driven by --pipeline-progress (set from OurStory.jsx's build timeline,
+   defaulting to 1 — fully filled — for reduced-motion/no-JS visitors and
+   anyone landing on the page already scrolled to this section). Reads
+   the value through whichever axis the current layout is actually using;
+   see the mobile override below. */
+.story-pipeline-fill {
+  background: #D4A24C;
+  transform: scaleX(var(--pipeline-progress, 1));
+  transform-origin: left;
+}
+
+.story-pipeline-nodes {
+  display: flex;
+  align-items: flex-start;
+  list-style: none;
   margin: 0;
   padding: 0;
-  list-style: none;
-  counter-reset: step;
+}
+
+/* Equal-width segments, not shrink-to-fit + justify-content:space-between
+   — space-between only equalizes the *gaps* between node boxes, so
+   variable label widths (e.g. "Specialist research" vs "Extraction")
+   left each dot's true center unevenly spaced, most visibly throwing the
+   middle checkpoint off the row's actual horizontal center. Equal-width
+   segments guarantee every dot lands at its own segment's exact center,
+   evenly spaced by construction — including the 4th of 7 landing exactly
+   on the row's (and, since the rail spans the viewport symmetrically,
+   the screen's) center. */
+.story-pipeline-node {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
 }
 
-.story-steps li {
-  counter-increment: step;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  color: #E8E4DC;
-  padding: 10px 0;
-  border-top: 1px solid #1E1F22;
-  transition: color 0.3s ease;
-}
-
-.story-steps li:first-child {
-  border-top: none;
-}
-
-.story-steps li::before {
-  content: counter(step, decimal-leading-zero) '  ';
+.story-pipeline-dot {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: var(--pipeline-dot-size);
+  height: var(--pipeline-dot-size);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  background: #D4A24C;
+  border: 2.5px solid #D4A24C;
+  color: #0B0B0C;
+  transition: background 0.4s ease, border-color 0.4s ease, color 0.4s ease;
+}
+
+.story-pipeline-node-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  color: #E8E4DC;
+  transition: color 0.4s ease;
+}
+
+/* Not-yet-reached resting state, applied only right before the build
+   timeline starts (see OurStory.jsx) — never present for reduced-motion
+   visitors, who only ever see the filled/lit styling above. */
+.story-pipeline-node.is-pending .story-pipeline-dot {
+  background: transparent;
+  border-color: #33322D;
   color: #57554F;
-  transition: color 0.3s ease;
 }
 
-.story-steps li.is-active {
-  color: #D4A24C;
+.story-pipeline-node.is-pending .story-pipeline-node-label {
+  color: #57554F;
 }
 
-.story-steps li.is-active::before {
-  color: #D4A24C;
-}
-
+/* Mobile: 7 evenly-spaced circles with labels underneath don't fit a
+   narrow viewport, so the timeline rotates to a vertical stack — a
+   column of dot+label rows connected by a vertical bar down the left
+   edge — rather than shrinking to illegibility or scrolling
+   horizontally. The same --pipeline-progress value just gets read
+   through scaleY/top instead of scaleX/left. */
 @media (max-width: 860px) {
-  .story-grid {
-    grid-template-columns: 1fr;
+  .story-pipeline-track,
+  .story-pipeline-fill {
+    left: calc(var(--pipeline-dot-size) / 2);
+    right: auto;
+    top: calc(var(--pipeline-dot-size) / 2);
+    bottom: calc(var(--pipeline-dot-size) / 2);
+    width: 3px;
+    height: auto;
+  }
+
+  .story-pipeline-fill {
+    transform: scaleY(var(--pipeline-progress, 1));
+    transform-origin: top;
+  }
+
+  .story-pipeline-nodes {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 26px;
+  }
+
+  .story-pipeline-node {
+    /* Reset back to natural sizing — the equal-width-segment technique
+       above is specifically for the horizontal row's centering; this
+       vertical stack's own height is already uniform row-to-row (every
+       row is as tall as the fixed-size dot regardless of label length),
+       so it never had the off-center bug and doesn't need the fix. */
+    flex: 0 1 auto;
+    flex-direction: row;
+    align-items: center;
+    text-align: left;
+    gap: 16px;
+  }
+
+  .story-pipeline-node-label {
+    font-size: 13.5px;
+  }
+
+  /* The heading's forced single line (see .story-heading above) doesn't
+     fit a narrow viewport — undo it here so it wraps normally instead of
+     overflowing/forcing horizontal scroll. */
+  .story-heading {
+    white-space: normal;
+    max-width: 460px;
+    margin-left: auto;
+    margin-right: auto;
   }
 }

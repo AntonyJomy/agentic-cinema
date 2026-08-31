@@ -1,13 +1,44 @@
-.risk-grid {
+.risk-grid-section {
+  /* Measured off the reference at ~352px tall per row on a ~1341px-wide
+     mosaic (~26% of width) — scales with the container instead of a fixed
+     px value so the ratio holds as the section's own max-width responds. */
+  --mosaic-row-height: clamp(200px, 27vw, 340px);
+  /* ~16px gutter on a ~1341px-wide reference mosaic (~1.2%), consistent
+     between rows and between cells within a row. */
+  --mosaic-gap: 20px;
+}
+
+.mosaic-module {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mosaic-gap);
+}
+
+.mosaic-module + .mosaic-module {
+  margin-top: var(--mosaic-gap);
+}
+
+.mosaic-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 18px;
-  perspective: 1200px;
+  gap: var(--mosaic-gap);
+  height: var(--mosaic-row-height);
+}
+
+/* Row 1: large-left/narrow-right (~61/38, measured off the reference).
+   Row 2: narrow-left/large-right (~36/63) — the two large cells sit on one
+   diagonal, the two narrow cells on the other, per the reference. */
+.mosaic-row--top {
+  grid-template-columns: 62% 38%;
+}
+
+.mosaic-row--bottom {
+  grid-template-columns: 37% 63%;
 }
 
 .risk-tile {
   position: relative;
-  aspect-ratio: 3 / 4;
+  box-sizing: border-box;
+  height: 100%;
   border: 1px solid #1E1F22;
   background: rgba(19, 19, 21, 0.7);
   padding: 20px;
@@ -17,7 +48,8 @@
   overflow: hidden;
   transform-style: preserve-3d;
   will-change: transform;
-  transition: border-color 0.2s ease, background 0.2s ease;
+  transition: border-color 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .risk-tile:hover {
@@ -25,10 +57,32 @@
   background: rgba(212, 162, 76, 0.06);
 }
 
+/* Cover image + scrim: the tile's own background is now a photo, not a
+   flat fill — the existing hover scale (below, via useTilt on the tile
+   itself) carries the image along with it since it's just another child
+   of the scaled box, rather than needing a separate scale mechanism. */
+.risk-tile-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.risk-tile-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.1));
+}
+
 .risk-tile::before {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: none;
   background: radial-gradient(
     circle at var(--spot-x, 50%) var(--spot-y, 50%),
@@ -40,19 +94,25 @@
 }
 
 .risk-tile-index {
+  position: relative;
+  z-index: 3;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
   color: #D4A24C;
   opacity: 0.75;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
 .risk-tile-label {
+  position: relative;
+  z-index: 3;
   font-family: 'Inter Tight', sans-serif;
   font-weight: 700;
   font-size: 17px;
   line-height: 1.2;
   color: #F2F0EA;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
   transition: transform 0.25s ease;
 }
 
@@ -66,7 +126,17 @@
 }
 
 @media (max-width: 720px) {
+  /* The asymmetric ratios need horizontal room to read as a deliberate
+     mosaic rather than oddly-proportioned boxes — below that, every cell
+     stacks in original card order (01-06) at a consistent width/height. */
+  .mosaic-row {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+  }
+
   .risk-tile {
-    margin-top: 0 !important;
+    height: auto;
+    min-height: 160px;
   }
 }

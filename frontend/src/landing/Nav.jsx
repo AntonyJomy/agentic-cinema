@@ -27,16 +27,14 @@ export default function Nav() {
 
   return (
     <nav className="landing-nav" ref={navRef}>
-      <span className="landing-nav-mark">
+      <Link to="/" className="landing-nav-mark">
         SCRIPT<span className="landing-nav-mark-accent">CLEAR</span> AI
-      </span>
+      </Link>
       <div className="landing-nav-links">
-        <span className="landing-nav-link">PRODUCT</span>
-        <span className="landing-nav-link">PROCESS</span>
-        <span className="landing-nav-link">ABOUT</span>
+        <Link to="/about" className="landing-nav-link">ABOUT</Link>
       </div>
       <Link to={ctaTo} state={ctaState} className="landing-nav-enter">
-        ENTER
+        SIGN IN
       </Link>
     </nav>
   );

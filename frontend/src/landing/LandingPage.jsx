@@ -2,6 +2,7 @@ import { useLenis } from '../lib/useLenis';
 import PageIntro from './PageIntro';
 import CustomCursor from './CustomCursor';
 import Nav from './Nav';
+import ScrollToTop from './ScrollToTop';
 import Hero from './Hero';
 import StackStrip from './StackStrip';
 import RiskGrid from './RiskGrid';
@@ -28,6 +29,7 @@ export default function LandingPage() {
       <PageIntro />
       <CustomCursor />
       <Nav />
+      <ScrollToTop />
       <Hero />
       <StackStrip />
       <RiskGrid />

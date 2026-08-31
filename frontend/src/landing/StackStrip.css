@@ -1,4 +1,10 @@
 .stack-strip {
+  position: relative;
+  /* Explicit (not inherited) so this section fully covers Hero, which now
+     stays position: sticky underneath it, as it scrolls up — without its
+     own opaque background this section is transparent between its own
+     content, and Hero's still-transforming headline would show through. */
+  background: #0B0B0C;
   padding-top: 64px;
   padding-bottom: 64px;
 }

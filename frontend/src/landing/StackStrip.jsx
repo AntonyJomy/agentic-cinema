@@ -18,6 +18,16 @@ const STACK = [
   { name: 'Cloud Firestore', Logo: GoogleCloudLogo },
 ];
 
+// The loop below translates the track by exactly 1/REPEAT_COUNT of its own
+// width, so copy 2 lands pixel-for-pixel where copy 1 started — seamless
+// regardless of count. But that's only gap-free at any point *during* the
+// loop (not just at the reset) if (REPEAT_COUNT-1) copies' worth of width
+// is at least the viewport width — otherwise the trailing edge of the last
+// copy runs out before the viewport does, exposing blank track just before
+// each reset. One set measures roughly 900-950px; 6 copies covers up to
+// ~4500px of viewport width, comfortably past 4K/ultrawide.
+const REPEAT_COUNT = 6;
+
 function StackItem({ name, Logo }) {
   return (
     <span className="stack-item">
@@ -50,16 +60,20 @@ export default function StackStrip() {
     // rate — if that read gets skipped for a few frames under load, the
     // marquee simply doesn't speed up for a moment, it never stops.
     //
-    // The track renders the sequence twice back-to-back; animating exactly
-    // half its own width and looping is what makes the wrap invisible —
-    // the second copy is already sitting where the first one just
-    // vacated, so there's no snap-back to see.
-    const halfWidth = track.scrollWidth / 2;
+    // The track renders the sequence REPEAT_COUNT times back-to-back;
+    // animating exactly one copy's width (1/REPEAT_COUNT of the total) and
+    // looping is what makes the wrap invisible — the next copy is already
+    // sitting where the current one just vacated, so there's no snap-back
+    // to see, and with enough copies (see REPEAT_COUNT's own comment)
+    // there's always a full viewport of content ahead at any point in the
+    // cycle, not just at the reset instant.
+    const oneSetWidth = track.scrollWidth / REPEAT_COUNT;
     const pxPerSecond = window.innerWidth < 640 ? 36 : 56;
-    const duration = (halfWidth / pxPerSecond) * 1000;
+    const duration = (oneSetWidth / pxPerSecond) * 1000;
+    const loopPercent = 100 / REPEAT_COUNT;
 
     const anim = track.animate(
-      [{ transform: 'translateX(0%)' }, { transform: 'translateX(-50%)' }],
+      [{ transform: 'translateX(0%)' }, { transform: `translateX(-${loopPercent}%)` }],
       { duration, iterations: Infinity, easing: 'linear' }
     );
     animRef.current = anim;
@@ -101,7 +115,7 @@ export default function StackStrip() {
     };
   }, [reduced]);
 
-  const items = reduced ? STACK : [...STACK, ...STACK];
+  const items = reduced ? STACK : Array.from({ length: REPEAT_COUNT }, () => STACK).flat();
 
   return (
     <section className="landing-section stack-strip" ref={sectionRef}>

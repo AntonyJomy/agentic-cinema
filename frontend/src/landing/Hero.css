@@ -1,5 +1,22 @@
 .hero {
+  /* Ordinary in-flow block — no position:sticky, no ScrollTrigger pin.
+     Hero's own scroll-linked transforms (see Hero.jsx) are scrubbed
+     against its natural scroll-past distance instead, so it costs exactly
+     its own height of scroll (like any block), not that plus a pinned
+     hold. */
   position: relative;
+  /* Scopes .hero-title/.hero-sub's z-index:1 (meant only to sit above this
+     section's own bg/scrim) to inside this element, without giving .hero
+     itself a numbered z-index — a numbered z-index here would move the
+     whole section into the "positioned" paint bucket, ahead of the later,
+     non-positioned sections that are supposed to cover it as they scroll
+     up. isolation creates the stacking context without that side effect,
+     so .hero keeps painting in plain DOM order relative to its siblings. */
+  isolation: isolate;
+  /* Feeds the word font-size formula below: caps type size so three
+     stacked lines never exceed the available vertical space, at any
+     aspect ratio. */
+  --hero-y: clamp(20px, 8vh, 100px);
   height: 100vh;
   min-height: 640px;
   display: flex;
@@ -11,10 +28,45 @@
 .hero-bg {
   position: absolute;
   inset: -30px;
+  overflow: hidden;
+  /* Fallback fill behind the image (visible only if title-bg.png is ever
+     missing/slow to load) — was previously the section's only background. */
   background:
     radial-gradient(ellipse 1100px 700px at 78% 24%, rgba(212, 162, 76, 0.16), transparent 60%),
     radial-gradient(ellipse 900px 900px at 10% 90%, rgba(212, 162, 76, 0.08), transparent 65%),
     #0B0B0C;
+}
+
+.hero-bg-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* The photo's subject (a figure under a spotlight, among the seats)
+     sits centered horizontally and just below vertical center — biasing
+     the crop slightly downward keeps that in frame across aspect ratios,
+     letting the ornate ceiling detail at the very top crop away first. */
+  object-position: center 58%;
+  pointer-events: none;
+}
+
+/* Gooey blob "peek": draws its own grayscale copy of the background,
+   composited down to just the cursor-tracked blob shape each frame (see
+   Hero.jsx) — canvas content, not a CSS mask, after the previous SVG-mask
+   version (mask-image: url(#id) on a plain HTML element) turned out not
+   to render in some browsers. No transform of its own, so its own
+   coordinates stay in plain screen space, matching the cursor's actual
+   screen position regardless of how the color layer beneath it is
+   currently panning/zooming from scroll. */
+.hero-bg-peek-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
 }
 
 .hero-bg::after {
@@ -35,28 +87,34 @@
   z-index: 1;
   margin: 0;
   width: 100%;
+  padding: 0 clamp(20px, 4vw, 48px);
   font-family: 'Inter Tight', sans-serif;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.02;
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1;
 }
 
 .hero-word {
   display: block;
-  font-size: clamp(48px, 8vw, 108px);
+  width: 100%;
+  /* Reference formula, measured directly off the live site: the smaller of
+     a viewport-width-relative size and one third of the available
+     viewport height (so the 3-line stack always fits), clamped to a
+     sensible floor/ceiling. */
+  font-size: clamp(38px, min(12vw, calc((100vh - 2 * var(--hero-y)) / 3)), 280px);
   color: #F2F0EA;
 }
 
 .hero-word--1 {
-  padding-left: 6vw;
+  text-align: left;
 }
 
 .hero-word--2 {
-  padding-left: 24vw;
+  text-align: center;
 }
 
 .hero-word--3 {
-  padding-left: 42vw;
+  text-align: right;
   color: #D4A24C;
 }
 
@@ -129,9 +187,6 @@
 }
 
 @media (max-width: 860px) {
-  .hero-word--1 { padding-left: 0; }
-  .hero-word--2 { padding-left: 8vw; }
-  .hero-word--3 { padding-left: 16vw; }
   .hero-sub {
     left: 24px;
     right: 24px;

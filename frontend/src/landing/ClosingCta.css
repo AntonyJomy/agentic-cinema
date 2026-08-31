@@ -1,10 +1,108 @@
 .closing-cta {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding-top: 140px;
   padding-bottom: 140px;
   text-align: center;
+  background: #0B0B0C;
+}
+
+/* Overrides .landing-section's shared 1280px cap (same fix, same reason,
+   as .services-section.landing-section in Services.css). Without this,
+   .closing-cta's own box — not just its content — stays capped at 1280px
+   even though .closing-bg/.closing-scrim below are styled to be
+   full-viewport-width: overflow:hidden above clips descendants to this
+   element's own border box regardless of how a child is positioned or
+   transformed, so a full-bleed child can't escape a narrower ancestor —
+   it needs the ancestor itself to actually be full-width. Content stays
+   centered regardless (flex align-items/justify-content center on this
+   box, not a width-dependent margin trick), so removing the cap doesn't
+   move the text/button at all. */
+.closing-cta.landing-section {
+  max-width: none;
+}
+
+@media (min-width: 768px) {
+  /* Compound selector: this element also carries the shared .landing-section
+     class (padding: 96px 48px, same specificity as a bare .closing-cta
+     rule) — needs the higher specificity here to reliably win regardless
+     of stylesheet order. 112vh (rather than a flat 100vh) — a
+     deliberately stronger pause before the beige final section, not just
+     however much a bare viewport happens to leave; it's also the scroll
+     distance ClosingCta.jsx's unpinned scrub plays out over (its own
+     natural top-to-bottom height, same mechanism as Hero). */
+  .closing-cta.landing-section {
+    height: 112vh;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+/* Background image layer, structured exactly like Hero's own .hero-bg/
+   .hero-bg-image (see Hero.css) so the two sections share not just the
+   scroll mechanism but the same visual construction: an oversized,
+   overflow-hidden wrapper (the -30px inset gives the scaling/translating
+   image a bleed margin so it never exposes an edge) around a cover-fit
+   image, scrubbed by ClosingCta.jsx's timeline in lockstep with the text.
+   A plain inset (not a viewport-width breakout) is correct here now that
+   .closing-cta.landing-section above removes the 1280px cap that used to
+   make this necessary — .closing-cta's own box is genuinely full-width,
+   so bleeding to ITS edges already reaches the screen's edges. */
+.closing-bg {
+  position: absolute;
+  inset: -30px;
+  overflow: hidden;
+  background: #0B0B0C;
+}
+
+.closing-bg-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* The photo (a symmetric aisle of theatre seats facing a lit stained-
+     glass window) is already centered on its own focal point, unlike
+     Hero's off-center composition — a plain center crop keeps the window
+     in frame at any aspect ratio. */
+  object-position: center;
+  pointer-events: none;
+}
+
+/* Same purpose as Hero's .hero-scrim: keeps the title/button legible over
+   a real photo rather than the flat #0B0B0C this section used before. */
+.closing-scrim {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(11, 11, 12, 0.35) 0%, rgba(11, 11, 12, 0.82) 100%);
+}
+
+/* Particle disintegration layer (see ClosingCta.jsx) — sits above the
+   title/button (z-index) so drifting particles read as coming from the
+   text rather than being hidden behind it, but never intercepts pointer
+   events meant for the button underneath. Explicit width/height, not
+   just inset:0 — canvas is a replaced element (like img/video), and
+   inset:0 alone doesn't stretch a replaced element to fill its
+   containing block the way it does an ordinary div; it's left at its
+   default intrinsic 300x150 canvas size instead (same reason Hero's own
+   .hero-bg-peek-canvas sets these explicitly). */
+.closing-particles-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .closing-title {
+  position: relative;
+  z-index: 1;
   margin: 0 0 40px;
   font-family: 'Inter Tight', sans-serif;
   font-weight: 800;
@@ -14,7 +112,20 @@
   color: #F2F0EA;
 }
 
+.closing-title-line {
+  display: inline-block;
+  /* Explicit starting inset() rather than the implicit "none" — GSAP needs
+     a same-shaped clip-path function to interpolate from. */
+  clip-path: inset(0% 0% 0% 0%);
+}
+
+.closing-word--gold {
+  color: #D4A24C;
+}
+
 .closing-cta-button {
+  position: relative;
+  z-index: 1;
   display: inline-block;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 13px;
