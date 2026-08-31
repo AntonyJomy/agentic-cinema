@@ -5,47 +5,60 @@ import './KeyFigures.css';
 
 // Palomino's "KEY FIGURES" numbered stat grid — but a hackathon project
 // has no real usage/client numbers to report, and fabricating them (e.g.
-// a fake "screenplays cleared" count) would be a false claim. These four
-// figures are all real and verifiable directly from the codebase: the
-// actual count of risk categories, entity types, specialist agents, and
-// pipeline stages the system implements.
+// a fake "screenplays cleared" count) would be a false claim. These three
+// figures are all real and verifiable directly from the codebase.
 const FIGURES = [
-  { value: '7', label: 'Risk categories screened' },
-  { value: '9', label: 'Entity types detected' },
-  { value: '6', label: 'Specialist research agents' },
-  { value: '7', label: 'Pipeline stages, end to end' },
+  { value: '6', label: 'Types of scanning' },
+  { value: '7', label: 'Staged Pipeline' },
+  { value: '4', label: 'Specialist Research Agents' },
 ];
 
 export default function KeyFigures() {
   const ref = useRef(null);
   useRevealOnScroll(ref, { selector: '.figure-tile', stagger: 0.08 });
 
-  // Numbers count up from zero as the tile enters — the one moment on this
-  // page where a value earns its own emphasis instead of just fading in.
+  // Numbers count up from zero every time the tile (re)enters the
+  // viewport, in either scroll direction — not a one-time "once: true"
+  // reveal. onEnter and onLeaveBack share the same replay function; each
+  // call creates its own fresh {n: 0} counter object, so a re-trigger
+  // always restarts the count from zero rather than resuming from
+  // wherever a prior run left off. The previous run's tween is killed
+  // first so two overlapping counts can't fight over the same
+  // el.textContent if the user scrolls back and forth quickly.
   useEffect(() => {
     if (!ref.current || prefersReducedMotion()) return undefined;
     registerGsap();
 
     const valueEls = ref.current.querySelectorAll('.figure-value');
+    const activeTweens = new Map();
+
+    function replay(el, target) {
+      activeTweens.get(el)?.kill();
+      const counter = { n: 0 };
+      const tween = gsap.to(counter, {
+        n: target,
+        duration: 1.1,
+        ease: 'power2.out',
+        onUpdate: () => { el.textContent = Math.round(counter.n); },
+      });
+      activeTweens.set(el, tween);
+    }
+
     const triggers = Array.from(valueEls).map((el) => {
       const target = parseInt(el.textContent, 10);
       return ScrollTrigger.create({
         trigger: ref.current,
         start: 'top 82%',
-        once: true,
-        onEnter: () => {
-          const counter = { n: 0 };
-          gsap.to(counter, {
-            n: target,
-            duration: 1.1,
-            ease: 'power2.out',
-            onUpdate: () => { el.textContent = Math.round(counter.n); },
-          });
-        },
+        end: 'bottom 20%',
+        onEnter: () => replay(el, target),
+        onEnterBack: () => replay(el, target),
       });
     });
 
-    return () => triggers.forEach((t) => t.kill());
+    return () => {
+      triggers.forEach((t) => t.kill());
+      activeTweens.forEach((tween) => tween.kill());
+    };
   }, []);
 
   return (

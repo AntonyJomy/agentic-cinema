@@ -3,49 +3,15 @@
   color: #0B0B0C;
 }
 
-.footer-columns {
-  display: flex;
-  gap: 96px;
-  padding-top: 64px;
-  padding-bottom: 32px;
-}
-
-.footer-col {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.footer-col-label {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
-  color: #8B8A85;
-  margin-bottom: 6px;
-}
-
-.footer-col a {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  color: #0B0B0C;
-  text-decoration: none;
-}
-
-.footer-col a:hover {
-  color: #B2792C;
-}
-
-.footer-note {
-  margin: 0;
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  color: #57554F;
-  max-width: 240px;
-}
-
 .footer-wordmark-wrap {
   overflow: hidden;
-  padding-bottom: 24px;
+  /* Breathing room above and below the wordmark — now the footer's only
+     content (the Infos/Pages link columns that used to sit above it, and
+     provide the top spacing via their own padding, were removed), so it
+     needs its own top padding to keep reading as anchored within the
+     beige field rather than flush against the top edge. */
+  padding-top: clamp(64px, 10vw, 160px);
+  padding-bottom: clamp(64px, 10vw, 160px);
 }
 
 .footer-wordmark {
@@ -53,18 +19,13 @@
   text-align: center;
   font-family: 'Inter Tight', sans-serif;
   font-weight: 800;
-  font-size: clamp(64px, 15vw, 220px);
+  /* Substantially larger than before (was clamp(64px, 15vw, 220px)) — the
+     dominant element of the final section, not a footer detail. */
+  font-size: clamp(80px, 22vw, 340px);
   letter-spacing: -0.03em;
   line-height: 0.9;
   background: linear-gradient(120deg, #D4A24C, #F2D9A6, #B2792C);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-}
-
-@media (max-width: 640px) {
-  .footer-columns {
-    flex-direction: column;
-    gap: 32px;
-  }
 }
