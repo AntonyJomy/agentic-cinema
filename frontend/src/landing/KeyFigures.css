@@ -1,0 +1,54 @@
+.figures-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: #1E1F22;
+  border: 1px solid #1E1F22;
+}
+
+.figure-tile {
+  background: #0B0B0C;
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 180px;
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.figure-tile:hover {
+  background: rgba(212, 162, 76, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(212, 162, 76, 0.35);
+}
+
+.figure-index {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: #57554F;
+}
+
+.figure-value {
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 800;
+  font-size: 56px;
+  line-height: 1;
+  color: #D4A24C;
+  margin-top: auto;
+}
+
+.figure-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: #A6A49C;
+}
+
+@media (max-width: 640px) {
+  /* 3 columns stay evenly filled down to tablet width; true phone widths
+     don't have room for 3 side by side without cramping the large number
+     + label, so this drops to a single column instead of the previous
+     2-column split (which, with 3 boxes instead of 4, would leave an
+     empty trailing cell). */
+  .figures-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Routes, Route, Outlet, Navigate, useLocation } from 'react-router-dom';
-import ScrollStory from './ScrollStory';
-import Features from './Features';
+import LandingPage from './landing/LandingPage';
+import About from './landing/About';
 import AppHeader from './components/AppHeader';
 import DustField from './components/DustField';
 import { ProductTour, useTourState } from './components/ProductTour';
@@ -20,15 +20,6 @@ import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
 import './styles/shared.css';
 import './App.css';
-
-function Landing() {
-  return (
-    <>
-      <ScrollStory />
-      <Features />
-    </>
-  );
-}
 
 function AppLayout({ tourState }) {
   const runCtx = useRun();
@@ -71,7 +62,8 @@ function App() {
       <RunProvider>
         <ProductTour run={tourState.runTour} onComplete={tourState.completeTour} />
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/about" element={<About />} />
           <Route path="/login" element={<LoginPage />} />
           <Route
             element={

@@ -1,0 +1,55 @@
+.landing-cursor-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9998;
+  /* No opacity/is-active gating needed here (unlike .landing-cursor below)
+     — an untouched <canvas> draws nothing and is fully transparent by
+     definition, so there's no default-geometry artifact to hide on touch
+     devices where the effect never runs. */
+  pointer-events: none;
+}
+
+.landing-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  margin-top: -12px;
+  /* Hidden until the effect actually activates (desktop, fine pointer, no
+     reduced motion) and adds .is-active — otherwise, with no positioning
+     ever applied on touch devices, this sits at its unpositioned default
+     (top:0, left:0) and shows a visible fragment in the viewport corner. */
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: difference;
+  will-change: transform;
+}
+
+.landing-cursor.is-active {
+  opacity: 1;
+}
+
+.landing-cursor-arm {
+  position: absolute;
+  background: #F2F0EA;
+}
+
+.landing-cursor-arm--h {
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 1.5px;
+  transform: translateY(-50%);
+}
+
+.landing-cursor-arm--v {
+  left: 50%;
+  top: 0;
+  height: 100%;
+  width: 1.5px;
+  transform: translateX(-50%);
+}
