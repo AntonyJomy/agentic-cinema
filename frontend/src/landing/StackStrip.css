@@ -1,0 +1,124 @@
+.stack-strip {
+  position: relative;
+  /* Explicit (not inherited) so this section fully covers Hero, which now
+     stays position: sticky underneath it, as it scrolls up — without its
+     own opaque background this section is transparent between its own
+     content, and Hero's still-transforming headline would show through. */
+  background: #0B0B0C;
+  padding-top: 64px;
+  padding-bottom: 64px;
+}
+
+/* Breaks out of the section's max-width so the ribbon itself spans the
+   full viewport (needed for the edge fade + the "integrated into the page"
+   feel) while the BUILT ON label above it stays exactly where it was,
+   inside the section's normal padded width. */
+.stack-marquee {
+  position: relative;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+
+.stack-marquee--contained {
+  width: auto;
+  margin-left: 0;
+  margin-right: 0;
+  overflow: visible;
+  mask-image: none;
+  -webkit-mask-image: none;
+  padding: 0 48px;
+}
+
+.stack-track {
+  display: flex;
+  align-items: center;
+  gap: 56px;
+  width: max-content;
+  padding: 4px 0;
+  will-change: transform;
+}
+
+.stack-track--static {
+  flex-wrap: wrap;
+  width: 100%;
+  gap: 40px 56px;
+}
+
+.stack-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  color: #57554F;
+  white-space: nowrap;
+  transition: color 0.25s ease, opacity 0.3s ease;
+}
+
+.stack-item-logo {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  transition: transform 0.25s ease;
+}
+
+.stack-item-name {
+  display: inline-block;
+  transition: transform 0.25s ease;
+}
+
+/* Hovering one item dims its neighbours slightly so the row still reads as
+   a continuous strip that's responding as a whole, not isolated buttons. */
+.stack-track:hover .stack-item {
+  opacity: 0.55;
+}
+
+.stack-track:hover .stack-item:hover {
+  opacity: 1;
+  color: #D4A24C;
+}
+
+.stack-item:hover .stack-item-logo {
+  transform: scale(1.12);
+}
+
+.stack-item:hover .stack-item-name {
+  transform: translateX(3px);
+}
+
+@media (max-width: 860px) {
+  .stack-track {
+    gap: 40px;
+  }
+  .stack-item {
+    font-size: 16px;
+  }
+  .stack-item-logo {
+    width: 17px;
+    height: 17px;
+  }
+}
+
+@media (max-width: 640px) {
+  .stack-track {
+    gap: 28px;
+  }
+  .stack-item {
+    font-size: 14px;
+    gap: 8px;
+  }
+  .stack-item-logo {
+    width: 15px;
+    height: 15px;
+  }
+  .stack-track--static {
+    gap: 24px 28px;
+  }
+}

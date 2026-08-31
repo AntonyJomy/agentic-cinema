@@ -1,0 +1,223 @@
+/* Overrides .landing-section's shared 1280px cap (kept as the shared
+   default for every other section) — this one is meant to read as a
+   full-width editorial composition, not a centered column. Same 48px
+   edge padding as the rest of the page, just a much larger ceiling so the
+   row actually spans the available viewport at normal desktop widths,
+   with a sane stop past that for ultra-wide monitors.
+   Compound selector, not just `.services-section` — this element also
+   carries the shared `.landing-section` class, which sets the same
+   max-width property at equal specificity (both single-class selectors);
+   ties resolve by stylesheet order, and landing-shared.css loads after
+   this file, so a bare `.services-section` rule silently never won. This
+   is the same fix already used for `.closing-cta.landing-section`. */
+.services-section.landing-section {
+  max-width: 2200px;
+}
+
+.service-card {
+  display: grid;
+  /* fr-based, floor not cap: the card is a real fraction of the row
+     (~31%) and grows with the viewport — a fixed minmax(240px,320px) cap
+     just handed all the extra width to the content column instead. The
+     floor (320px) only protects narrower desktop widths; there's no
+     ceiling. Content and capabilities are still proportional (~45% /
+     ~24%), so capabilities stays anchored at the row's right edge. Height
+     is kept in check separately, via .service-visual's aspect-ratio below
+     — not by capping this track's width. */
+  grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.25fr) minmax(180px, 0.65fr);
+  gap: 64px;
+  align-items: start;
+  padding: 40px 0;
+  border-top: 1px solid #1E1F22;
+  perspective: 1000px;
+  position: sticky;
+  top: 90px;
+  background: #0B0B0C;
+  transform-origin: top center;
+  will-change: transform;
+}
+
+.service-card:last-child {
+  border-bottom: 1px solid #1E1F22;
+}
+
+/* Alternating layout: every other block mirrors, so the visual panel
+   zig-zags left/right down the section instead of always sitting on the
+   same side. Column widths swap along with it so the visual keeps its own
+   sizing rather than being squeezed into the capabilities column's width. */
+.service-card--reverse {
+  grid-template-columns: minmax(180px, 0.65fr) minmax(0, 1.25fr) minmax(320px, 0.85fr);
+}
+
+.service-card--reverse .service-visual {
+  order: 3;
+}
+
+.service-card--reverse .service-body {
+  order: 2;
+}
+
+.service-card--reverse .service-capabilities {
+  order: 1;
+}
+
+.service-visual {
+  position: relative;
+  /* Was 4/5 (portrait) — at ~31% of a much wider row that made the card
+     tall rather than wide, the opposite of the goal. A cinematic 16/9
+     keeps it reading as a wide horizontal panel as it grows with the
+     viewport, without the row getting proportionally taller. */
+  aspect-ratio: 16 / 9;
+  background:
+    linear-gradient(160deg, rgba(212, 162, 76, 0.22), rgba(212, 162, 76, 0.03)),
+    #131315;
+  border: 1px solid #1E1F22;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Stacking inside .service-visual, back to front:
+   video (0) -> grade/tint ::after (1) -> hover spotlight ::before (2)
+   -> index/tag text (3). All four are explicitly z-indexed since the
+   video is the only one that isn't naturally a "later paints on top"
+   element by source order (it's placed first in the JSX so it doesn't
+   have to be moved for keyboard/reader order). */
+.service-visual-video {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  /* Cinematic grade, applied uniformly across all four videos so they
+     read as one visual world rather than four unrelated clips: pulled
+     back saturation and brightness, slightly boosted contrast, a whisper
+     of warmth (sepia) leaning toward the brand's amber rather than a
+     neutral or cool cast. */
+  filter: saturate(0.8) contrast(1.1) brightness(0.82) sepia(0.08);
+}
+
+/* Grade/tint overlay — sits over the video, under the hover spotlight.
+   Replaces the amber gradient that used to be .service-visual's own
+   background (kept there too, now just a fallback behind the video for
+   when a clip hasn't been sourced yet): ties the footage to the brand's
+   amber, adds the "gentle grain" from the same noise texture Hero.css
+   uses on its own background, and darkens the lower edge so the index/tag
+   text stays legible over bright footage. */
+.service-visual::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E"),
+    linear-gradient(160deg, rgba(212, 162, 76, 0.22), rgba(212, 162, 76, 0.03) 55%),
+    linear-gradient(0deg, rgba(11, 11, 12, 0.55), transparent 45%);
+}
+
+.service-visual::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--spot-x, 50%) var(--spot-y, 50%),
+    rgba(212, 162, 76, 0.22),
+    transparent 60%
+  );
+  opacity: var(--spot-opacity, 0);
+  transition: opacity 0.3s ease;
+}
+
+.service-index {
+  position: relative;
+  z-index: 3;
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 800;
+  font-size: 22px;
+  color: #F2F0EA;
+}
+
+.service-visual-tag {
+  position: relative;
+  z-index: 3;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #D4A24C;
+}
+
+.service-title {
+  margin: 0 0 14px;
+  font-family: 'Inter Tight', sans-serif;
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.2;
+  color: #F2F0EA;
+  max-width: 420px;
+}
+
+.service-description {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: #A6A49C;
+  max-width: 480px;
+}
+
+.service-capabilities-label {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: #57554F;
+  margin-bottom: 12px;
+}
+
+.service-capabilities ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.service-capabilities li {
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  color: #8B8A85;
+}
+
+@media (max-width: 960px) {
+  .service-card,
+  .service-card--reverse {
+    grid-template-columns: 160px 1fr;
+  }
+  .service-capabilities {
+    grid-column: 1 / -1;
+  }
+  /* The zig-zag reads as clutter at this width — everyone stacks the same
+     way, image first, regardless of which block it is. */
+  .service-card--reverse .service-visual,
+  .service-card--reverse .service-body,
+  .service-card--reverse .service-capabilities {
+    order: initial;
+  }
+}
+
+@media (max-width: 640px) {
+  .service-card,
+  .service-card--reverse {
+    grid-template-columns: 1fr;
+  }
+}
