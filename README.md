@@ -11,7 +11,7 @@
 |                        |                                                                                                            |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
 | **Live app**           | [https://agentic-cinema-web-qtltf5pl4q-ts.a.run.app/](https://agentic-cinema-web-qtltf5pl4q-ts.a.run.app/) |
-| **Demo video (3 min)** | *← add public YouTube/Vimeo link*                                                                          |
+| **Demo video (3 min)** | https://youtu.be/NJiw-BpOpNI                                                                         |
 | **Repository**         | [https://github.com/AntonyJomy/agentic-cinema](https://github.com/AntonyJomy/agentic-cinema)               |
 | **Partner track**      | **Parallel**                                                                                               |
 | **License**            | [MIT](./LICENSE) (root `LICENSE` — visible in GitHub About)                                                |
