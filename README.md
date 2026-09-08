@@ -17,8 +17,6 @@
 | **License**            | [MIT](./LICENSE) (root `LICENSE` — visible in GitHub About)                                                |
 
 
-> **For judges (60 seconds):** open the [live app](https://agentic-cinema-web-qtltf5pl4q-ts.a.run.app/) → sign in → upload a short screenplay (or use sample text from `[tests/scripts/](./tests/scripts/)`) → watch specialists research via Parallel → review findings → attempt export (gatekeeper holds until high-risk items are decided). Then skim [Partner + Google proof](#partner--google-cloud--imported-and-called-in-code) below.
-
 ---
 
 
